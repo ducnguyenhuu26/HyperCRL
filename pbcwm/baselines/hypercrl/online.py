@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from pbcwm.planning.cem import CEMPlanResult, CEMPlanner
+from pbcwm.core.device import resolve_device
 from pbcwm.preferences.buffer import PreferenceBuffer
 from pbcwm.preferences.query import DisagreementQuerySelector
 from pbcwm.preferences.reward_model import PreferenceRewardEnsemble
@@ -32,14 +33,14 @@ class HyperCRLAdaptOnline:
         device: str | torch.device = "cpu",
         seed: int | None = None,
     ) -> None:
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.min_preferences_before_planning = int(
             preference_config["min_preferences_before_planning"]
         )
         self.dynamics = HyperCRLAdaptDynamicsLearner(
             obs_dim=obs_dim,
             action_dim=action_dim,
-            device=device,
+            device=self.device,
             seed=seed,
             **hypercrl_config,
         )
@@ -50,7 +51,7 @@ class HyperCRLAdaptOnline:
             hidden_dims=preference_config["hidden_dims"],
             learning_rate=preference_config["learning_rate"],
             batch_size=preference_config["reward_batch_size"],
-            device=device,
+            device=self.device,
             seed=None if seed is None else seed + 1,
         )
         self.preference_buffer = PreferenceBuffer(seed=seed)
@@ -67,7 +68,7 @@ class HyperCRLAdaptOnline:
             {
                 "action_low": action_low,
                 "action_high": action_high,
-                "device": device,
+                "device": self.device,
                 "candidate_keep_per_iteration": preference_config[
                     "candidate_keep_per_iteration"
                 ],

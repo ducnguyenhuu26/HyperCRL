@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from pbcwm.core.dynamics import DynamicsLearner
+from pbcwm.core.device import resolve_device
 from pbcwm.preferences.types import TrajectorySegment
 from pbcwm.rewards.base import RewardFunction
 
@@ -55,7 +56,7 @@ class CEMPlanner:
         self.population_size = int(population_size)
         self.elite_size = int(elite_size)
         self.num_iterations = int(num_iterations)
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.discount = float(discount)
         self.min_std = float(min_std)
         self.candidate_keep_per_iteration = int(candidate_keep_per_iteration)

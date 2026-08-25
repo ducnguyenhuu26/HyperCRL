@@ -38,15 +38,33 @@ def evaluate_probe_bank(learner: Any, bank: DynamicsProbeBank) -> dict[str, floa
 
     if len(bank.probes) < 2:
         return {"r2_at_1": None, "r2_at_H": None, "nrmse_at_H": None}
-    predictions = np.empty((len(bank.probes), bank.horizon, bank.obs_dim), dtype=np.float32)
+    device = getattr(learner, "device", torch.device("cpu"))
+    if not isinstance(device, torch.device):
+        device = torch.device(device)
     true = np.stack([probe.true_obs for probe in bank.probes]).astype(np.float32)
-    obs = torch.as_tensor(np.stack([probe.initial_obs for probe in bank.probes]), dtype=torch.float32)
-    actions = torch.as_tensor(np.stack([probe.actions for probe in bank.probes]), dtype=torch.float32)
+    obs = torch.as_tensor(
+        np.stack([probe.initial_obs for probe in bank.probes]),
+        dtype=torch.float32,
+        device=device,
+    )
+    actions = torch.as_tensor(
+        np.stack([probe.actions for probe in bank.probes]),
+        dtype=torch.float32,
+        device=device,
+    )
+    predictions = torch.empty(
+        (len(bank.probes), bank.horizon, bank.obs_dim),
+        dtype=obs.dtype,
+        device=device,
+    )
     for horizon_index in range(bank.horizon):
         obs = learner.predict(obs, actions[:, horizon_index])
-        predictions[:, horizon_index] = obs.detach().cpu().numpy()
-    r2_by_horizon = [_macro_r2(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
-    nrmse_by_horizon = [_macro_nrmse(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
+        if obs.device != device:
+            obs = obs.to(device)
+        predictions[:, horizon_index] = obs
+    predictions_np = predictions.detach().cpu().numpy()
+    r2_by_horizon = [_macro_r2(true[:, index], predictions_np[:, index]) for index in range(bank.horizon)]
+    nrmse_by_horizon = [_macro_nrmse(true[:, index], predictions_np[:, index]) for index in range(bank.horizon)]
     valid_r2 = [value for value in r2_by_horizon if value is not None]
     valid_nrmse = [value for value in nrmse_by_horizon if value is not None]
     return {

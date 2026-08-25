@@ -30,6 +30,10 @@ python -m pbcwm.experiments.radius_validation.run_fixed_stream --synthetic --str
 
 ## GPU/Hopper commands
 
+`--device auto` selects CUDA when available.  The runner keeps the Hopper
+environment and frozen stream on CPU, while learner updates, CEM/PFPA
+rollouts, and batched probe inference run on the selected CUDA device.
+
 After MuJoCo and CUDA are available, generate the real stream once:
 
 ```powershell

@@ -17,6 +17,7 @@ from pbcwm.baselines.hypercrl.online import HyperCRLAdaptOnline
 from pbcwm.baselines.vblrl.online import VBLRLAdaptOnline
 from pbcwm.baselines.curious_replay.online import CuriousReplayOnline
 from pbcwm.core.types import Transition
+from pbcwm.core.device import configure_torch
 from pbcwm.benchmarks.base import build_agent_transition
 from pbcwm.envs.nonstationary_pendulum import NonstationaryPendulum
 from pbcwm.evaluation.metrics import evaluate_dynamics
@@ -50,11 +51,15 @@ def set_global_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        config = yaml.safe_load(handle)
+    config["device"] = str(configure_torch(config.get("device", "auto")))
+    return config
 
 
 def build_components(config: dict[str, Any], seed: int):

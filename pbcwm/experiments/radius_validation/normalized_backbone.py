@@ -9,6 +9,7 @@ import torch
 from torch import nn
 
 from pbcwm.core.dynamics import DynamicsLearner
+from pbcwm.core.device import move_batch, resolve_device
 from pbcwm.core.normalization import RunningNormalizer
 from pbcwm.core.types import Transition
 from pbcwm.methods.radius.atlas.backbone import SharedDynamicsBackbone
@@ -63,7 +64,7 @@ class NormalizedPlainDynamicsLearner(DynamicsLearner):
     ) -> None:
         self.obs_dim = int(obs_dim)
         self.action_dim = int(action_dim)
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.batch_size = int(batch_size)
         scale = torch.ones(self.action_dim, dtype=torch.float32) if action_scale is None else torch.as_tensor(action_scale, dtype=torch.float32).flatten()
         if scale.numel() != self.action_dim or (scale <= 0).any():
@@ -101,9 +102,9 @@ class NormalizedPlainDynamicsLearner(DynamicsLearner):
         self.model.train()
         for _ in range(num_steps):
             batch = self.replay.sample(self.batch_size)
-            obs = torch.as_tensor(np.stack([item.obs for item in batch]), dtype=torch.float32, device=self.device)
-            action = torch.as_tensor(np.stack([item.action for item in batch]), dtype=torch.float32, device=self.device)
-            next_obs = torch.as_tensor(np.stack([item.next_obs for item in batch]), dtype=torch.float32, device=self.device)
+            obs = move_batch(torch.as_tensor(np.stack([item.obs for item in batch]), dtype=torch.float32), self.device)
+            action = move_batch(torch.as_tensor(np.stack([item.action for item in batch]), dtype=torch.float32), self.device)
+            next_obs = move_batch(torch.as_tensor(np.stack([item.next_obs for item in batch]), dtype=torch.float32), self.device)
             normalized_obs = self.state_normalizer.normalize(obs)
             normalized_action = self._normalize_action(action)
             target_delta = self.delta_normalizer.normalize(next_obs - obs)

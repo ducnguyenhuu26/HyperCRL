@@ -6,6 +6,7 @@ import torch
 from torch import nn
 
 from pbcwm.core.buffer import ReplayBuffer
+from pbcwm.core.device import move_batch, resolve_device
 from pbcwm.core.dynamics import DynamicsLearner
 from pbcwm.core.types import Transition
 from pbcwm.models.mlp_dynamics import MLPDynamicsModel
@@ -29,7 +30,7 @@ class StaticDynamicsLearner(DynamicsLearner):
             raise ValueError("learning_rate must be positive")
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.batch_size = int(batch_size)
         self.model = MLPDynamicsModel(obs_dim, action_dim, hidden_dims).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
@@ -47,9 +48,9 @@ class StaticDynamicsLearner(DynamicsLearner):
         losses: list[float] = []
         for _ in range(num_steps):
             batch = self.replay_buffer.sample(self.batch_size)
-            obs = batch.obs.to(self.device)
-            action = batch.action.to(self.device)
-            target_delta = batch.next_obs.to(self.device) - obs
+            obs = move_batch(batch.obs, self.device)
+            action = move_batch(batch.action, self.device)
+            target_delta = move_batch(batch.next_obs, self.device) - obs
             prediction = self.model(obs, action)
             loss = nn.functional.mse_loss(prediction, target_delta)
             self.optimizer.zero_grad(set_to_none=True)

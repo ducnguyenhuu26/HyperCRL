@@ -87,6 +87,13 @@ retrieval of a stored regime model.
 
 ## Install and run
 
+The YAML configs use `device: auto`: CUDA is selected when available and CPU
+is used otherwise.  Neural dynamics, CEM rollouts, PFPA, preference models,
+and probe evaluation stay on the resolved accelerator; environments, replay
+storage, exact-GP state, and scalar protocol bookkeeping stay on CPU.  Use
+`device: cpu` for a deliberate CPU run or `device: cuda` to fail closed when
+CUDA is unavailable.
+
 From the repository root:
 
 ```bash

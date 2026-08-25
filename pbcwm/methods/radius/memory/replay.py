@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+from pbcwm.core.device import move_batch
+
 from ..types import RadiusReplayItem
 
 
@@ -40,8 +42,12 @@ class RadiusReplayBuffer:
         for entry in entries:
             context = prototype_means.get(entry.prototype_id, entry.context_mean) if prototype_means is not None and entry.prototype_id is not None else entry.context_mean
             context_values.append(torch.nn.functional.pad(context, (0, max(0, rank - context.numel())))[:rank])
-        contexts = torch.stack(context_values).to(device)
-        return (torch.stack([entry.obs for entry in entries]).to(device), torch.stack([entry.action for entry in entries]).to(device), torch.stack([entry.next_obs for entry in entries]).to(device), contexts)
+        return (
+            move_batch(torch.stack([entry.obs for entry in entries]), device),
+            move_batch(torch.stack([entry.action for entry in entries]), device),
+            move_batch(torch.stack([entry.next_obs for entry in entries]), device),
+            move_batch(torch.stack(context_values), device),
+        )
 
     def __len__(self) -> int:
         return len(self.storage)

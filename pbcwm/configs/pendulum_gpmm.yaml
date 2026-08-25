@@ -1,5 +1,5 @@
 seed: 0
-device: cpu
+device: auto
 
 env:
   name: Pendulum-v1

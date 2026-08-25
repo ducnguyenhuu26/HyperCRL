@@ -6,6 +6,7 @@ import numpy as np
 import torch
 
 from pbcwm.core.types import Transition
+from pbcwm.core.device import resolve_device
 from pbcwm.planning.cem import CEMPlanResult, CEMPlanner
 from pbcwm.preferences.buffer import PreferenceBuffer
 from pbcwm.preferences.query import DisagreementQuerySelector
@@ -48,7 +49,7 @@ class MoPRLOnlineFT:
         device: str | torch.device = "cpu",
         seed: int | None = None,
     ) -> None:
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.min_preferences_before_planning = int(min_preferences_before_planning)
         self.dynamics = StaticDynamicsLearner(
             obs_dim=obs_dim,
@@ -57,7 +58,7 @@ class MoPRLOnlineFT:
             learning_rate=model_learning_rate,
             replay_capacity=dynamics_window_size,
             batch_size=dynamics_batch_size,
-            device=device,
+            device=self.device,
             seed=seed,
         )
         self.reward_ensemble = PreferenceRewardEnsemble(
@@ -67,7 +68,7 @@ class MoPRLOnlineFT:
             hidden_dims=preference_hidden_dims,
             learning_rate=preference_learning_rate,
             batch_size=preference_batch_size,
-            device=device,
+            device=self.device,
             seed=None if seed is None else seed + 1,
         )
         self.preference_buffer = PreferenceBuffer(preference_buffer_capacity, seed=seed)
@@ -80,7 +81,7 @@ class MoPRLOnlineFT:
         planner_kwargs = dict(planner_config)
         planner_kwargs["action_low"] = action_low
         planner_kwargs["action_high"] = action_high
-        planner_kwargs["device"] = device
+        planner_kwargs["device"] = self.device
         self.planner = CEMPlanner(**planner_kwargs)
         self._rng = np.random.default_rng(seed)
 

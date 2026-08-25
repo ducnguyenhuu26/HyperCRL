@@ -5,6 +5,8 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
+from pbcwm.core.device import resolve_device
+
 from .buffer import PreferenceBuffer
 from .types import PreferenceExample, TrajectorySegment
 
@@ -49,7 +51,7 @@ class PreferenceRewardEnsemble:
     ) -> None:
         if ensemble_size <= 0 or batch_size <= 0 or learning_rate <= 0:
             raise ValueError("ensemble_size, batch_size, and learning_rate must be positive")
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.batch_size = int(batch_size)
         torch_generator = torch.Generator(device="cpu")
         if seed is None:
@@ -188,15 +190,23 @@ class PreferenceRewardEnsemble:
         model: RewardMLP,
         examples: Sequence[PreferenceExample],
     ) -> torch.Tensor:
-        logits = []
-        for example in examples:
-            obs_a, actions_a = self._stack_trajectories([example.traj_a])
-            obs_b, actions_b = self._stack_trajectories([example.traj_b])
-            score_a = model(obs_a, actions_a).sum()
-            score_b = model(obs_b, actions_b).sum()
-            # Label 1 means B preferred, so the BCE logit is score(B)-score(A).
-            logits.append(score_b - score_a)
-        return torch.stack(logits)
+        if not examples:
+            return torch.empty(0, device=self.device)
+        # The old implementation launched two model calls per example.  Pack
+        # both sides of the preference batch into one forward pass so CUDA
+        # sees useful work instead of many tiny kernels.
+        obs_a = torch.stack([example.traj_a.obs for example in examples]).to(self.device)
+        actions_a = torch.stack([example.traj_a.actions for example in examples]).to(self.device)
+        obs_b = torch.stack([example.traj_b.obs for example in examples]).to(self.device)
+        actions_b = torch.stack([example.traj_b.actions for example in examples]).to(self.device)
+        observations = torch.cat((obs_a, obs_b), dim=0)
+        actions = torch.cat((actions_a, actions_b), dim=0)
+        scores = model(
+            observations.reshape(-1, observations.shape[-1]),
+            actions.reshape(-1, actions.shape[-1]),
+        ).reshape(2 * len(examples), -1).sum(dim=1)
+        # Label 1 means B preferred, so the BCE logit is score(B)-score(A).
+        return scores[len(examples):] - scores[:len(examples)]
 
     def _stack_trajectories(
         self,

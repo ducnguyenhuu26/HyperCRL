@@ -8,14 +8,17 @@ from pathlib import Path
 
 import yaml
 
+from pbcwm.core.device import configure_torch
+
 from .generate_fixed_stream import load_fixed_stream
 from .probes import load_probe_bank
 from .run_fixed_stream import run_variant
 from .variants import VARIANT_NAMES
 
 
-def run_online_ablation(stream_path: str | Path, *, probe_dir: str | Path, variants: tuple[str, ...] = ("W1", "W2", "W3", "W4"), seed: int = 0, device: str = "cpu", max_steps: int | None = None) -> dict:
+def run_online_ablation(stream_path: str | Path, *, probe_dir: str | Path, variants: tuple[str, ...] = ("W1", "W2", "W3", "W4"), seed: int = 0, device: str = "auto", max_steps: int | None = None) -> dict:
     stream = load_fixed_stream(stream_path)
+    device = str(configure_torch(device))
     if any(name not in VARIANT_NAMES[1:] for name in variants):
         raise ValueError("online ablation accepts W1-W4 only")
     probe_dir = Path(probe_dir)
@@ -29,7 +32,7 @@ def main() -> None:
     parser.add_argument("--stream", required=True)
     parser.add_argument("--probe-dir", required=True)
     parser.add_argument("--output", default="outputs/radius_validation/online_ablation_setup.json")
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or a CUDA index such as cuda:1")
     parser.add_argument("--max-steps", type=int)
     args = parser.parse_args()
     result = run_online_ablation(args.stream, probe_dir=args.probe_dir, device=args.device, max_steps=args.max_steps)

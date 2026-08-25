@@ -13,6 +13,8 @@ import numpy as np
 import torch
 import yaml
 
+from pbcwm.core.device import configure_torch
+
 from .generate_fixed_stream import FixedStream, generate_fixed_stream, load_fixed_stream
 from .probe_metrics import evaluate_probe_bank
 from .probes import DynamicsProbeBank, generate_synthetic_probe_banks, load_probe_bank, probe_bank_sha256
@@ -67,7 +69,7 @@ def run_variant(
     *,
     probe_banks: dict[str, DynamicsProbeBank],
     seed: int = 0,
-    device: str = "cpu",
+    device: str = "auto",
     max_steps: int | None = None,
 ) -> dict[str, Any]:
     if max_steps is not None and max_steps < 0:
@@ -75,7 +77,8 @@ def run_variant(
     steps = min(stream.steps, stream.steps if max_steps is None else int(max_steps))
     low = -np.ones(stream.action.shape[1], dtype=np.float32)
     high = np.ones(stream.action.shape[1], dtype=np.float32)
-    learner = build_variant(variant, stream.obs.shape[1], stream.action.shape[1], action_low=low, action_high=high, device=device, seed=seed)
+    resolved_device = configure_torch(device)
+    learner = build_variant(variant, stream.obs.shape[1], stream.action.shape[1], action_low=low, action_high=high, device=resolved_device, seed=seed)
     stage_length = 10_000
     schedule = ("P0", "A", "B", "C", "B", "A")
     checkpoints = build_stage_checkpoints(
@@ -116,6 +119,7 @@ def run_variant(
         "protocol": "radius_hopper_fixed_stream_component_validation",
         "variant": variant,
         "seed": seed,
+        "device": str(resolved_device),
         "steps": steps,
         "schedule": ["P0", "A", "B", "C", "B", "A"],
         "stage_length": stage_length,
@@ -130,7 +134,7 @@ def run_variant(
     }
 
 
-def run_fixed_stream(stream_path: str | Path, *, variant: str, probe_dir: str | Path, seed: int = 0, device: str = "cpu", max_steps: int | None = None, output: str | Path | None = None) -> dict[str, Any]:
+def run_fixed_stream(stream_path: str | Path, *, variant: str, probe_dir: str | Path, seed: int = 0, device: str = "auto", max_steps: int | None = None, output: str | Path | None = None) -> dict[str, Any]:
     stream = load_fixed_stream(stream_path)
     probe_dir = Path(probe_dir)
     probe_banks = {dynamics_id: load_probe_bank(probe_dir / f"{dynamics_id}.npz") for dynamics_id in dict.fromkeys(stream.dynamics_id.tolist())}
@@ -148,7 +152,7 @@ def main() -> None:
     parser.add_argument("--variant", choices=VARIANT_NAMES, default="W0")
     parser.add_argument("--probe-dir", default="outputs/radius_validation/probe_banks_seed0")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default="auto", help="auto, cpu, cuda, or a CUDA index such as cuda:1")
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--synthetic", action="store_true", help="create a short CPU fixture if the stream is absent; probe banks must still be generated separately")
     parser.add_argument("--output", default="outputs/radius_validation/fixed_stream_result.json")

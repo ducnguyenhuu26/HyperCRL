@@ -147,14 +147,21 @@ class GPMMDynamicsLearner(DynamicsLearner):
     def predict(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         if self.current_expert is None:
             raise RuntimeError("GPMM has no expert; observe a transition before predict")
-        prediction = self.experts[self.current_expert].predict_next(obs, action)
+        # ExactGP state is deliberately CPU/double in this baseline.  Keep
+        # that path explicit, then restore the caller's device for the shared
+        # planner contract (which may be CUDA).
+        prediction = self.experts[self.current_expert].predict_next(
+            obs.detach().cpu(), action.detach().cpu()
+        )
         return prediction.to(device=obs.device, dtype=obs.dtype)
 
     def predict_distribution(self, obs: torch.Tensor, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if self.current_expert is None:
             raise RuntimeError("GPMM has no expert; observe a transition before predict")
-        mean, variance = self.experts[self.current_expert].predict_distribution(obs, action)
-        return mean, variance
+        mean, variance = self.experts[self.current_expert].predict_distribution(
+            obs.detach().cpu(), action.detach().cpu()
+        )
+        return mean.to(obs.device, obs.dtype), variance.to(obs.device, obs.dtype)
 
     def diagnostics(self) -> dict[str, float | int | list[int]]:
         selected_log_likelihood = 0.0

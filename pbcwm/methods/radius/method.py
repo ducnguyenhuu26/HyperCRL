@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from pbcwm.core.dynamics import DynamicsLearner
+from pbcwm.core.device import resolve_device
 from pbcwm.core.normalization import RunningNormalizer
 from pbcwm.core.types import Transition
 from pbcwm.preferences.types import TrajectorySegment
@@ -46,7 +47,7 @@ class RadiusPbCWM(DynamicsLearner):
         self.config = config
         self.obs_dim = int(obs_dim)
         self.action_dim = int(action_dim)
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         self.state_normalizer = RunningNormalizer(self.obs_dim)
         self.delta_normalizer = RunningNormalizer(self.obs_dim)
         scale = torch.ones(self.action_dim, dtype=torch.float32) if action_scale is None else torch.as_tensor(action_scale, dtype=torch.float32).flatten()
@@ -184,10 +185,20 @@ class RadiusPbCWM(DynamicsLearner):
         """Consume only obs/action/next_obs; reward and metadata are not read."""
 
         self.global_step += 1
-        obs = torch.as_tensor(np.asarray(transition.obs, dtype=np.float32), device=self.device)
-        action = torch.as_tensor(np.asarray(transition.action, dtype=np.float32), device=self.device)
-        next_obs = torch.as_tensor(np.asarray(transition.next_obs, dtype=np.float32), device=self.device)
-        self._observe_normalized(obs, action, next_obs)
+        # Keep the tiny online statistics update on CPU.  The transition is
+        # already a CPU environment result; creating a CUDA tensor first and
+        # then calling RunningNormalizer.update() would force a synchronous
+        # device-to-host copy on every environment step.
+        obs_np = np.asarray(transition.obs, dtype=np.float32)
+        action_np = np.asarray(transition.action, dtype=np.float32)
+        next_obs_np = np.asarray(transition.next_obs, dtype=np.float32)
+        obs_cpu = torch.as_tensor(obs_np, dtype=torch.float32)
+        next_obs_cpu = torch.as_tensor(next_obs_np, dtype=torch.float32)
+        self.state_normalizer.update(obs_cpu)
+        self.delta_normalizer.update(next_obs_cpu - obs_cpu)
+        obs = torch.as_tensor(obs_np, dtype=torch.float32, device=self.device)
+        action = torch.as_tensor(action_np, dtype=torch.float32, device=self.device)
+        next_obs = torch.as_tensor(next_obs_np, dtype=torch.float32, device=self.device)
         self.active_prior_history.append(self._snapshot())
         self.recent.append(RadiusRecentItem(obs.detach().clone(), action.detach().clone(), next_obs.detach().clone()))
 
