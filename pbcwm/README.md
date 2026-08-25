@@ -117,6 +117,18 @@ reacquisition counts, and stage-to-posterior evaluator metrics. Curious
 Replay logs priority/count/loss statistics, evaluator-only sampled replay
 shares, and model/return recovery fields for returning dynamics.
 
+The repaired RADIUS path is implemented in `pbcwm/methods/radius/`. REF
+updates the active context one real transition at a time and evaluates
+prototype/new routing from independent priors, avoiding duplicated evidence
+from overlapping windows. FDA, REF and RNE use lifetime running normalization
+while replay keeps raw values. PEC's main mode applies a direct low-rank
+trust-region parameter step and logs predicted forgetting cost.
+
+Protocol-faithful real lifetimes use
+`pbcwm.experiment.CanonicalLifetimeRunner`, which owns stage/query/checkpoint
+timing through `pbcwm.protocol`, keeps evaluator metadata outside learner
+transitions, and restores checkpointable training state around evaluation.
+
 ## Design boundaries
 
 `DynamicsLearner` is the only replaceable baseline seam. Stochastic learners

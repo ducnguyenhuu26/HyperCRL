@@ -39,7 +39,12 @@ def gaussian_context_posterior(
     covariance = torch.linalg.solve(precision, eye)
     rhs = prior_precision @ prior_mean + torch.einsum("ndr,nd->r", basis, residual) / (sigma**2)
     mean = covariance @ rhs
-    return mean, _symmetrize(covariance)
+    covariance = _symmetrize(covariance)
+    if not torch.isfinite(mean).all() or not torch.isfinite(covariance).all():
+        raise FloatingPointError("non-finite REF posterior")
+    if torch.linalg.eigvalsh(covariance).min() < -1e-6:
+        raise FloatingPointError("REF posterior covariance is not positive semidefinite")
+    return mean, covariance
 
 
 def log_marginal_evidence(
@@ -75,8 +80,13 @@ def log_marginal_evidence(
 def moment_match(means: torch.Tensor, covariances: torch.Tensor, weights: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     if means.ndim != 2 or covariances.ndim != 3 or weights.ndim != 1:
         raise ValueError("mixture inputs must be [K,R], [K,R,R], and [K]")
+    if not torch.isfinite(means).all() or not torch.isfinite(covariances).all() or not torch.isfinite(weights).all() or (weights < 0).any() or weights.sum() <= 0:
+        raise FloatingPointError("invalid REF mixture state")
     weights = weights / weights.sum().clamp_min(1e-12)
     mean = torch.sum(weights[:, None] * means, dim=0)
     centered = means - mean
     covariance = torch.sum(weights[:, None, None] * (covariances + centered[:, :, None] * centered[:, None, :]), dim=0)
-    return mean, _symmetrize(covariance)
+    covariance = _symmetrize(covariance)
+    if torch.linalg.eigvalsh(covariance).min() < -1e-6:
+        raise FloatingPointError("REF mixture covariance is not positive semidefinite")
+    return mean, covariance

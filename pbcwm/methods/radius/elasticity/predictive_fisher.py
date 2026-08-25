@@ -48,6 +48,11 @@ class LowRankPredictiveFisher:
             return 0.0
         return float((self.sketch.to(direction).T @ direction).square().sum())
 
+    def quadratic_form(self, vector: torch.Tensor) -> torch.Tensor:
+        sketch = self.sketch.to(vector)
+        fisher_vector = sketch @ (sketch.T @ vector) if self.rank else torch.zeros_like(vector)
+        return vector @ (fisher_vector + self.damping * vector)
+
     def state_dict(self) -> dict:
         return {"parameter_dim": self.parameter_dim, "damping": self.damping, "max_rank": self.max_rank, "sketch": self.sketch}
 

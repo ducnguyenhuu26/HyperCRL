@@ -28,7 +28,7 @@ def main() -> None:
         training=replace(loaded.training, batch_size=8, replay_capacity=128),
     )
     env = gym.make("Pendulum-v1")
-    method = RadiusPbCWM(3, 1, config, seed=args.seed)
+    method = RadiusPbCWM(3, 1, config, seed=args.seed, action_scale=env.action_space.high)
     obs, _ = env.reset(seed=args.seed)
     env.action_space.seed(args.seed)
     for _ in range(args.steps):
@@ -39,6 +39,7 @@ def main() -> None:
         obs = next_obs
         if terminated or truncated:
             obs, _ = env.reset()
+    method.refresh_pec_fisher()
     print(json.dumps({"steps": args.steps, "replay_size": len(method.replay), "rank": method.rank, **method.diagnostics()}, sort_keys=True))
     env.close()
 

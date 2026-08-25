@@ -17,6 +17,7 @@ class CEMPlanResult:
     action: np.ndarray
     best_action_sequence: torch.Tensor
     candidate_trajectories: list[TrajectorySegment]
+    elite_fraction: float = 0.0
 
 
 class CEMPlanner:
@@ -143,6 +144,7 @@ class CEMPlanner:
             action=mean[0].detach().cpu().numpy().astype(np.float32),
             best_action_sequence=best_action_sequence.detach().clone(),
             candidate_trajectories=candidates,
+            elite_fraction=float(self.elite_size / self.population_size),
         )
 
     def _rollout(

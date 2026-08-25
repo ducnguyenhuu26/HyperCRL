@@ -17,6 +17,7 @@ from pbcwm.baselines.hypercrl.online import HyperCRLAdaptOnline
 from pbcwm.baselines.vblrl.online import VBLRLAdaptOnline
 from pbcwm.baselines.curious_replay.online import CuriousReplayOnline
 from pbcwm.core.types import Transition
+from pbcwm.benchmarks.base import build_agent_transition
 from pbcwm.envs.nonstationary_pendulum import NonstationaryPendulum
 from pbcwm.evaluation.metrics import evaluate_dynamics
 from pbcwm.evaluation.gpmm_metrics import (
@@ -99,7 +100,6 @@ def run(config: dict[str, Any], total_steps: int | None = None) -> Path:
     log_path = Path(training["log_path"])
     log_path.parent.mkdir(parents=True, exist_ok=True)
     evaluation_capacity = int(training["evaluation_capacity"])
-    evaluation_fraction = float(training["evaluation_fraction"])
     evaluation_buffers: dict[int, list[Transition]] = {}
     episode_rewards: list[float] = []
     episode_return_value = 0.0
@@ -133,13 +133,11 @@ def run(config: dict[str, Any], total_steps: int | None = None) -> Path:
                 terminated=bool(terminated),
                 truncated=bool(truncated),
             )
-            if np.random.random() < evaluation_fraction:
-                stage = int(info["true_dynamics_stage"])
-                evaluation_buffers.setdefault(stage, [])
-                if len(evaluation_buffers[stage]) < evaluation_capacity:
-                    evaluation_buffers[stage].append(transition)
-            else:
-                dynamics.observe(transition)
+            stage = int(info["true_dynamics_stage"])
+            evaluation_buffers.setdefault(stage, [])
+            if len(evaluation_buffers[stage]) < evaluation_capacity and step % 5 == 0:
+                evaluation_buffers[stage].append(transition)
+            dynamics.observe(build_agent_transition(obs, action, next_obs, terminated, truncated))
             diagnostics = {"loss": 0.0}
             if step >= int(training["learning_starts"]):
                 diagnostics = dynamics.update(int(training["updates_per_step"]))

@@ -25,6 +25,7 @@ class REFConfig:
     memory_prior_mass: float = 1.0
     new_prior_mass: float = 0.25
     new_prior_std: float = 2.0
+    context_process_noise: float = 1e-3
     numerical_jitter: float = 1e-6
 
 
@@ -47,6 +48,7 @@ class RNEConfig:
     initialization_updates: int = 200
     initialization_lr: float = 1e-3
     new_context_variance: float = 1.0
+    min_model_updates_before_expansion: int = 500
 
 
 @dataclass(frozen=True)
@@ -59,7 +61,8 @@ class PECConfig:
     fisher_sketch_rank: int = 32
     fisher_refresh_interval: int = 2000
     anchors_per_prototype: int = 128
-    optimizer_integration: str = "transformed_gradient"
+    optimizer_integration: str = "direct_parameter_step"
+    max_step_norm: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -132,10 +135,18 @@ def radius_config_from_mapping(data: Mapping[str, Any]) -> RadiusConfig:
         raise ValueError("context_window must cover min_context_samples")
     if config.ref.residual_sigma <= 0.0 or config.ref.new_prior_std <= 0.0:
         raise ValueError("REF scales must be positive")
+    if config.ref.context_process_noise < 0.0:
+        raise ValueError("context_process_noise must be non-negative")
     if min(config.ref.active_prior_bonus, config.ref.memory_prior_mass, config.ref.new_prior_mass) <= 0.0:
         raise ValueError("REF prior masses must be positive")
     if not 0.0 <= config.pfpa.frontier_fraction <= 1.0:
         raise ValueError("frontier_fraction must be in [0, 1]")
+    if config.rne.min_model_updates_before_expansion < 0:
+        raise ValueError("min_model_updates_before_expansion must be non-negative")
+    if config.pec.max_step_norm <= 0.0:
+        raise ValueError("max_step_norm must be positive")
+    if config.pec.optimizer_integration not in {"direct_parameter_step", "transformed_gradient"}:
+        raise ValueError("unsupported PEC optimizer integration")
     return config
 
 

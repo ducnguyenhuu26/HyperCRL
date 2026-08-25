@@ -1,8 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import torch
 
 from ..types import ContextPosterior, ContextPrototype
+
+
+@dataclass(frozen=True)
+class ConsolidationResult:
+    event: str
+    prototype_id: int | None
+    evicted_prototype_id: int | None
+
+    def __iter__(self):
+        yield self.event
+        yield self.prototype_id
+
+    def __getitem__(self, index: int):
+        return (self.event, self.prototype_id)[index]
 
 
 class ContextMemory:
@@ -30,18 +46,19 @@ class ContextMemory:
         distances = [(prototype, float(self._distance(posterior, prototype))) for prototype in self.prototypes]
         return min(distances, key=lambda item: item[1])
 
-    def consolidate(self, posterior: ContextPosterior, step: int) -> tuple[str, int | None]:
+    def consolidate(self, posterior: ContextPosterior, step: int) -> ConsolidationResult:
         nearest, distance = self.nearest(posterior)
         if nearest is not None and distance <= self.merge_mahalanobis**2:
             self._fuse(nearest, posterior, step)
-            return "CONTEXT_PROTOTYPE_MERGED", nearest.prototype_id
+            return ConsolidationResult("CONTEXT_PROTOTYPE_MERGED", nearest.prototype_id, None)
         prototype = ContextPrototype(self._next_id, posterior.mean.detach().clone(), posterior.covariance.detach().clone(), 1, int(step), int(step), 1)
         self._next_id += 1
         self.prototypes.append(prototype)
+        evicted_id = None
         if len(self.prototypes) > self.max_prototypes:
             self.prototypes.sort(key=lambda item: (item.usage_count, item.last_active_step))
-            self.prototypes.pop(0)
-        return "CONTEXT_PROTOTYPE_CREATED", prototype.prototype_id
+            evicted_id = self.prototypes.pop(0).prototype_id
+        return ConsolidationResult("CONTEXT_PROTOTYPE_CREATED", prototype.prototype_id, evicted_id)
 
     def touch(self, prototype_id: int, step: int) -> None:
         for prototype in self.prototypes:

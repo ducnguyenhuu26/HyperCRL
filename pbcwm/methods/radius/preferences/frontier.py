@@ -21,6 +21,7 @@ class PFPASelection:
     coverage_pairs: int
     mean_entropy: float
     mean_frontier_score: float
+    elite_fraction: float = 0.0
 
 
 class PFPASelector:
@@ -32,7 +33,7 @@ class PFPASelector:
         self.rng = np.random.default_rng(seed)
 
     @staticmethod
-    def score_from_samples(candidate_scores: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def score_from_samples(candidate_scores: torch.Tensor, elite_fraction: float = 0.1) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Return pair probabilities, entropies, and frontier scores.
 
         ``candidate_scores`` is ``[sample, candidate]``. Samples can combine
@@ -42,7 +43,9 @@ class PFPASelector:
         if candidate_scores.ndim != 2 or candidate_scores.shape[1] < 2:
             raise ValueError("candidate_scores must have shape [sample, candidate>=2]")
         candidate_count = candidate_scores.shape[1]
-        elite_count = max(1, round(candidate_count * 0.10))
+        if not 0.0 < elite_fraction <= 1.0:
+            raise ValueError("elite_fraction must be in (0, 1]")
+        elite_count = max(1, round(candidate_count * elite_fraction))
         elite = torch.zeros_like(candidate_scores, dtype=torch.bool)
         elite.scatter_(1, torch.topk(candidate_scores, elite_count, dim=1).indices, True)
         elite_probability = elite.float().mean(dim=0)
@@ -59,10 +62,10 @@ class PFPASelector:
     def _pair_list(self, candidate_count: int) -> list[tuple[int, int]]:
         return [(i, j) for i in range(candidate_count) for j in range(i + 1, candidate_count)]
 
-    def select_from_scores(self, candidate_scores: torch.Tensor, actions: torch.Tensor | None, num_queries: int) -> PFPASelection:
+    def select_from_scores(self, candidate_scores: torch.Tensor, actions: torch.Tensor | None, num_queries: int, *, elite_fraction: float = 0.1) -> PFPASelection:
         if num_queries <= 0 or candidate_scores.shape[-1] < 2:
             return PFPASelection([], 0, 0, 0.0, 0.0)
-        probabilities, entropies, frontier_scores = self.score_from_samples(candidate_scores)
+        probabilities, entropies, frontier_scores = self.score_from_samples(candidate_scores, elite_fraction)
         pairs = self._pair_list(candidate_scores.shape[-1])
         frontier_count = min(num_queries, max(0, round(num_queries * self.frontier_fraction)))
         ordering = torch.argsort(frontier_scores, descending=True).tolist()
@@ -88,9 +91,9 @@ class PFPASelector:
         selected_pairs = [pairs[index] for index in selected]
         selected_entropy = [float(entropies[index]) for index in selected]
         selected_frontier = [float(frontier_scores[index]) for index in selected[: min(frontier_count, len(selected))]]
-        return PFPASelection(selected_pairs, min(frontier_count, len(selected)), max(0, len(selected) - min(frontier_count, len(selected))), float(np.mean(selected_entropy)) if selected_entropy else 0.0, float(np.mean(selected_frontier)) if selected_frontier else 0.0)
+        return PFPASelection(selected_pairs, min(frontier_count, len(selected)), max(0, len(selected) - min(frontier_count, len(selected))), float(np.mean(selected_entropy)) if selected_entropy else 0.0, float(np.mean(selected_frontier)) if selected_frontier else 0.0, elite_fraction)
 
-    def select(self, candidates: list[TrajectorySegment], reward_model: Any, num_queries: int, *, context_samples: int = 4) -> PFPASelection:
+    def select(self, candidates: list[TrajectorySegment], reward_model: Any, num_queries: int, *, context_samples: int = 4, elite_fraction: float = 0.1) -> PFPASelection:
         if len(candidates) < 2:
             return PFPASelection([], 0, 0, 0.0, 0.0)
         models = getattr(reward_model, "models", None)
@@ -104,7 +107,7 @@ class PFPASelector:
         if context_samples > 1:
             candidate_scores = candidate_scores.repeat((context_samples, 1))
         actions = torch.stack([traj.actions.flatten() for traj in candidates])
-        return self.select_from_scores(candidate_scores, actions, num_queries)
+        return self.select_from_scores(candidate_scores, actions, num_queries, elite_fraction=elite_fraction)
 
     def _diverse(self, pair_index: int, pairs: list[tuple[int, int]], actions: torch.Tensor | None, selected: list[int]) -> bool:
         if actions is None or not selected:
