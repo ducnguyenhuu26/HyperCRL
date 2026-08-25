@@ -1,6 +1,6 @@
 """Hopper-only RADIUS component validation infrastructure."""
 
-__all__ = ["generate_fixed_stream", "load_fixed_stream", "build_variant", "variant_config"]
+__all__ = ["generate_fixed_stream", "load_fixed_stream", "build_variant", "variant_config", "DynamicsProbeBank", "load_probe_bank"]
 
 
 def __getattr__(name):
@@ -12,4 +12,8 @@ def __getattr__(name):
         from .variants import build_variant, variant_config
 
         return {"build_variant": build_variant, "variant_config": variant_config}[name]
+    if name in {"DynamicsProbeBank", "load_probe_bank"}:
+        from .probes import DynamicsProbeBank, load_probe_bank
+
+        return {"DynamicsProbeBank": DynamicsProbeBank, "load_probe_bank": load_probe_bank}[name]
     raise AttributeError(name)

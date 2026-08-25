@@ -53,6 +53,15 @@ def _component_config() -> dict[str, Any]:
         return yaml.safe_load(handle)
 
 
+def _visit_ids(schedule: list[str]) -> list[int]:
+    counts: dict[str, int] = {}
+    visit_ids: list[int] = []
+    for dynamics_id in schedule:
+        visit_ids.append(counts.get(dynamics_id, 0))
+        counts[dynamics_id] = counts.get(dynamics_id, 0) + 1
+    return visit_ids
+
+
 def _make_spec(config: dict[str, Any], steps: int) -> BenchmarkSpec:
     experiment = config["experiment"]
     stage_length = int(experiment["stage_length"])
@@ -82,6 +91,7 @@ def _synthetic_stream(config: dict[str, Any], seed: int, steps: int) -> FixedStr
     previous_action = np.zeros(action_dim, dtype=np.float32)
     records: list[tuple[np.ndarray, np.ndarray, np.ndarray, bool, bool, float, int, str, int, bool, dict[str, float]]] = []
     roles = list(experiment["schedule"])
+    stage_visits = _visit_ids(roles)
     stage_length = int(experiment["stage_length"])
     for step in range(steps):
         stage_index = min(step // stage_length, len(roles) - 1)
@@ -98,7 +108,7 @@ def _synthetic_stream(config: dict[str, Any], seed: int, steps: int) -> FixedStr
         delta[action_dim:] = 0.01 * scale
         delta += rng.normal(0.0, 0.002, obs_dim).astype(np.float32)
         next_obs = (obs + delta).astype(np.float32)
-        records.append((obs.copy(), action.copy(), next_obs.copy(), False, False, float(np.linalg.norm(next_obs)), stage_index, role, stage_index // 3, step in {i * stage_length for i in range(1, 6)}, parameters))
+        records.append((obs.copy(), action.copy(), next_obs.copy(), False, False, float(np.linalg.norm(next_obs)), stage_index, role, stage_visits[stage_index], step in {i * stage_length for i in range(1, 6)}, parameters))
         obs, previous_action = next_obs, action
     return _records_to_stream(records)
 
@@ -118,6 +128,7 @@ def generate_fixed_stream(output: str | Path, *, seed: int = 0, steps: int | Non
     else:
         spec = _make_spec(config, total_steps)
         env = make_mujoco_benchmark(spec, root_seed=seed)
+        stage_visits = _visit_ids(list(experiment["schedule"]))
         policy_rng = np.random.default_rng(seed + 23)
         obs, _ = env.reset(seed=seed)
         previous_action = np.zeros(env.action_space.shape, dtype=np.float32)
@@ -131,7 +142,8 @@ def generate_fixed_stream(output: str | Path, *, seed: int = 0, steps: int | Non
                     action = np.clip(0.8 * previous_action + 0.2 * uniform, env.action_space.low, env.action_space.high).astype(np.float32)
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 meta = spec.regime_at(step)
-                records.append((np.asarray(obs, dtype=np.float32), action.copy(), np.asarray(next_obs, dtype=np.float32), bool(terminated), bool(truncated), float(reward), step // int(experiment["stage_length"]), experiment["schedule"][min(step // int(experiment["stage_length"]), len(experiment["schedule"]) - 1)], min(step // int(experiment["stage_length"]), len(experiment["schedule"]) - 1) // 3, step in {regime.start_step for regime in spec.regimes[1:]}, dict(meta.parameters)))
+                stage_index = min(step // int(experiment["stage_length"]), len(experiment["schedule"]) - 1)
+                records.append((np.asarray(obs, dtype=np.float32), action.copy(), np.asarray(next_obs, dtype=np.float32), bool(terminated), bool(truncated), float(reward), stage_index, experiment["schedule"][stage_index], stage_visits[stage_index], step in {regime.start_step for regime in spec.regimes[1:]}, dict(meta.parameters)))
                 obs = next_obs
                 previous_action = action
                 if terminated or truncated:

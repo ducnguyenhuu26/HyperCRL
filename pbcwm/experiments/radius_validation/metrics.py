@@ -27,13 +27,11 @@ def wm_reuse_advantage(first_auc: float, return_auc: float) -> float:
     return float(return_auc - first_auc)
 
 
-def t90(checkpoints: list[int], values: list[float], *, stage_length: int) -> int:
-    """First post-change checkpoint reaching 90% of the stable-tail target."""
+def t90(checkpoints: list[int], values: list[float], *, target: float, stage_length: int) -> int:
+    """First stage-relative checkpoint reaching an externally fixed target."""
 
     if len(checkpoints) != len(values) or not values:
         raise ValueError("T90 needs a non-empty paired series")
-    tail = np.asarray(values[-max(1, len(values) // 5):], dtype=np.float64)
-    target = 0.9 * float(np.mean(tail))
     for checkpoint, value in zip(checkpoints, values):
         if value >= target:
             return int(checkpoint)

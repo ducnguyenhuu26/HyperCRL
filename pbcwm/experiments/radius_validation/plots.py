@@ -11,7 +11,7 @@ def plot_checkpoint_curves(records_by_variant: dict[str, list[dict[str, Any]]], 
 
     figure, axis = plt.subplots(figsize=(7, 4))
     for variant, records in records_by_variant.items():
-        x = [record["checkpoint"] for record in records]
+        x = [record["global_step"] for record in records]
         y = [float("nan") if record["r2_at_H"] is None else record["r2_at_H"] for record in records]
         axis.plot(x, y, marker="o", label=variant)
     axis.set_xlabel("interactions")

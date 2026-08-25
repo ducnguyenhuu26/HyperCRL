@@ -9,4 +9,10 @@ def test_validation_metrics_are_deterministic_and_fail_closed():
     return_auc = return_visit_auc(checkpoints, recurrence)
     assert return_auc > first_auc
     assert wm_reuse_advantage(first_auc, return_auc) > 0.0
-    assert t90(checkpoints, recurrence, stage_length=10000) == 128
+    assert t90(checkpoints, recurrence, target=0.72, stage_length=10000) == 128
+
+
+def test_t90_target_is_not_derived_from_return_tail():
+    checkpoints = [16, 32, 64, 128]
+    assert t90(checkpoints, [0.30, 0.60, 0.75, 0.78], target=0.72, stage_length=10000) == 64
+    assert t90(checkpoints, [0.30, 0.60, 0.75, 0.95], target=0.72, stage_length=10000) == 64

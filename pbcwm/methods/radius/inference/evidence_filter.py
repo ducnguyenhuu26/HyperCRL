@@ -114,7 +114,16 @@ class RecurrentEvidenceFilter:
             for item, weight in zip(routing_result.candidates, routing_result.weights)
         }
         if best.source == "active":
-            if active.prototype_id is not None and best_weight < float(self.config.prototype_assignment_probability):
+            threshold = float(self.config.prototype_assignment_probability)
+            stored_ids = {prototype.prototype_id for prototype in self.memory.prototypes}
+            if (
+                not self.disable_memory
+                and best.prototype_id is not None
+                and best.prototype_id in stored_ids
+                and best_weight >= threshold
+            ):
+                active.prototype_id = best.prototype_id
+            elif best_weight < threshold:
                 active.prototype_id = None
             active.hypothesis_probabilities = probabilities
             active.new_hypothesis_probability = routing_result.new_probability

@@ -18,11 +18,17 @@ class RadiusReplayBuffer:
         self.rng = np.random.default_rng(seed)
 
     def add(self, item: RadiusReplayItem) -> None:
-        item = RadiusReplayItem(item.obs.detach().cpu().float().clone(), item.action.detach().cpu().float().clone(), item.next_obs.detach().cpu().float().clone(), item.context_mean.detach().cpu().float().clone())
+        copied = RadiusReplayItem(
+            item.obs.detach().cpu().float().clone(),
+            item.action.detach().cpu().float().clone(),
+            item.next_obs.detach().cpu().float().clone(),
+            item.context_mean.detach().cpu().float().clone(),
+            item.prototype_id,
+        )
         if len(self.storage) < self.capacity:
-            self.storage.append(item)
+            self.storage.append(copied)
         else:
-            self.storage[self.next_index] = item
+            self.storage[self.next_index] = copied
         self.next_index = (self.next_index + 1) % self.capacity
 
     def sample(self, batch_size: int, rank: int, device: torch.device, prototype_means: dict[int, torch.Tensor] | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

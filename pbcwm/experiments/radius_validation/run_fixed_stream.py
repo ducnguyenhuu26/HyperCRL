@@ -14,50 +14,87 @@ import torch
 import yaml
 
 from .generate_fixed_stream import FixedStream, generate_fixed_stream, load_fixed_stream
+from .probe_metrics import evaluate_probe_bank
+from .probes import DynamicsProbeBank, generate_synthetic_probe_banks, load_probe_bank, probe_bank_sha256
 from .variants import VARIANT_NAMES, build_variant
 
 
-def _r2(true: np.ndarray, predicted: np.ndarray) -> float | None:
-    if true.size == 0:
-        return None
-    variance = np.var(true, axis=0)
-    valid = variance > 1e-12
-    if not np.any(valid):
-        return None
-    value = 1.0 - np.sum((predicted[:, valid] - true[:, valid]) ** 2, axis=0) / (np.sum((true[:, valid] - np.mean(true[:, valid], axis=0)) ** 2, axis=0) + 1e-12)
-    return float(np.mean(value))
+def build_stage_checkpoints(
+    *,
+    stage_length: int,
+    schedule: tuple[str, ...],
+    fractions: tuple[float, ...],
+    recurrence_offsets: tuple[int, ...],
+    total_steps: int,
+) -> dict[int, list[dict[str, Any]]]:
+    """Build stage-relative checkpoints, retaining both sides of boundaries."""
+
+    visits: dict[str, int] = {}
+    checkpoints: dict[int, list[dict[str, Any]]] = {}
+    for stage_index, dynamics_id in enumerate(schedule):
+        visit_id = visits.get(dynamics_id, 0)
+        visits[dynamics_id] = visit_id + 1
+        stage_start = stage_index * stage_length
+        for fraction in fractions:
+            global_step = stage_start + round(stage_length * fraction)
+            if global_step <= total_steps:
+                checkpoints.setdefault(global_step, []).append({
+                    "global_step": global_step,
+                    "stage_index": stage_index,
+                    "dynamics_id": dynamics_id,
+                    "visit_id": visit_id,
+                    "stage_offset": int(round(stage_length * fraction)),
+                    "stage_fraction": float(fraction),
+                })
+        if visit_id > 0:
+            for offset in recurrence_offsets:
+                global_step = stage_start + int(offset)
+                if global_step <= min(total_steps, stage_start + stage_length):
+                    checkpoints.setdefault(global_step, []).append({
+                        "global_step": global_step,
+                        "stage_index": stage_index,
+                        "dynamics_id": dynamics_id,
+                        "visit_id": visit_id,
+                        "stage_offset": int(offset),
+                        "stage_fraction": float(offset / stage_length),
+                    })
+    return checkpoints
 
 
-def _probe(learner: Any, stream: FixedStream, start: int, horizon: int) -> tuple[float | None, float | None]:
-    if start < 0 or start + horizon > stream.steps:
-        return None, None
-    obs = torch.as_tensor(stream.obs[start:start + 1], dtype=torch.float32)
-    true = stream.next_obs[start:start + horizon]
-    predictions = []
-    for index in range(horizon):
-        action = torch.as_tensor(stream.action[start + index:start + index + 1], dtype=torch.float32)
-        obs = learner.predict(obs, action).detach().cpu()
-        predictions.append(obs.numpy()[0])
-    predicted = np.asarray(predictions, dtype=np.float32)
-    r2_h1 = _r2(true[:1], predicted[:1])
-    r2_h = _r2(true, predicted)
-    return r2_h1, r2_h
-
-
-def run_variant(stream: FixedStream, variant: str, *, seed: int = 0, device: str = "cpu", max_steps: int | None = None) -> dict[str, Any]:
-    steps = min(stream.steps, int(max_steps or stream.steps))
+def run_variant(
+    stream: FixedStream,
+    variant: str,
+    *,
+    probe_banks: dict[str, DynamicsProbeBank],
+    seed: int = 0,
+    device: str = "cpu",
+    max_steps: int | None = None,
+) -> dict[str, Any]:
+    if max_steps is not None and max_steps < 0:
+        raise ValueError("max_steps must be non-negative")
+    steps = min(stream.steps, stream.steps if max_steps is None else int(max_steps))
     low = -np.ones(stream.action.shape[1], dtype=np.float32)
     high = np.ones(stream.action.shape[1], dtype=np.float32)
     learner = build_variant(variant, stream.obs.shape[1], stream.action.shape[1], action_low=low, action_high=high, device=device, seed=seed)
-    fractions = (0.0, 0.02, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
-    checkpoints = sorted({min(steps, int(round(steps * fraction))) for fraction in fractions})
+    stage_length = 10_000
+    schedule = ("P0", "A", "B", "C", "B", "A")
+    checkpoints = build_stage_checkpoints(
+        stage_length=stage_length,
+        schedule=schedule,
+        fractions=(0.0, 0.02, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0),
+        recurrence_offsets=(16, 32, 64, 128),
+        total_steps=steps,
+    )
     records: list[dict[str, Any]] = []
     for step in range(steps + 1):
         if step in checkpoints:
-            probe_start = min(step, max(0, steps - 20))
-            r2_h1, r2_h = _probe(learner, stream, probe_start, min(20, steps - probe_start))
             diagnostics = learner.diagnostics() if callable(getattr(learner, "diagnostics", None)) else {}
-            records.append({"checkpoint": step, "probe_start": probe_start, "r2_at_1": r2_h1, "r2_at_H": r2_h, "diagnostics": {key: value for key, value in diagnostics.items() if isinstance(value, (float, int, str, bool))}})
+            for checkpoint in checkpoints[step]:
+                bank = probe_banks.get(checkpoint["dynamics_id"])
+                if bank is None:
+                    raise KeyError(f"missing evaluator probe bank for {checkpoint['dynamics_id']}")
+                metric = evaluate_probe_bank(learner, bank)
+                records.append({**checkpoint, **metric, "diagnostics": {key: value for key, value in diagnostics.items() if isinstance(value, (float, int, str, bool))}})
         if step >= steps:
             break
         learner.observe(stream.transition(step))
@@ -81,9 +118,11 @@ def run_variant(stream: FixedStream, variant: str, *, seed: int = 0, device: str
         "seed": seed,
         "steps": steps,
         "schedule": ["P0", "A", "B", "C", "B", "A"],
-        "stage_length": 10000,
-        "horizon": 20,
+        "stage_length": stage_length,
+        "horizon": next(iter(probe_banks.values())).horizon,
         "learner_payload_sha256": stream.learner_payload_sha256,
+        "fixed_stream_hash": stream.learner_payload_sha256,
+        "probe_bank_sha256": {key: probe_bank_sha256(value) for key, value in sorted(probe_banks.items())},
         "config_sha256": config_hash,
         "git_commit": git_commit,
         "failure_flags": failure_flags,
@@ -91,9 +130,11 @@ def run_variant(stream: FixedStream, variant: str, *, seed: int = 0, device: str
     }
 
 
-def run_fixed_stream(stream_path: str | Path, *, variant: str, seed: int = 0, device: str = "cpu", max_steps: int | None = None, output: str | Path | None = None) -> dict[str, Any]:
+def run_fixed_stream(stream_path: str | Path, *, variant: str, probe_dir: str | Path, seed: int = 0, device: str = "cpu", max_steps: int | None = None, output: str | Path | None = None) -> dict[str, Any]:
     stream = load_fixed_stream(stream_path)
-    result = run_variant(stream, variant, seed=seed, device=device, max_steps=max_steps)
+    probe_dir = Path(probe_dir)
+    probe_banks = {dynamics_id: load_probe_bank(probe_dir / f"{dynamics_id}.npz") for dynamics_id in dict.fromkeys(stream.dynamics_id.tolist())}
+    result = run_variant(stream, variant, probe_banks=probe_banks, seed=seed, device=device, max_steps=max_steps)
     if output is not None:
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,18 +146,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stream", default="outputs/radius_validation/hopper_fixed_stream_seed0.npz")
     parser.add_argument("--variant", choices=VARIANT_NAMES, default="W0")
+    parser.add_argument("--probe-dir", default="outputs/radius_validation/probe_banks_seed0")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--max-steps", type=int)
-    parser.add_argument("--synthetic", action="store_true", help="create a short CPU fixture if the stream is absent")
+    parser.add_argument("--synthetic", action="store_true", help="create a short CPU fixture if the stream is absent; probe banks must still be generated separately")
     parser.add_argument("--output", default="outputs/radius_validation/fixed_stream_result.json")
     args = parser.parse_args()
     stream_path = Path(args.stream)
+    if args.synthetic and not Path(args.probe_dir).exists():
+        generate_synthetic_probe_banks(Path(__file__).parent / "configs" / "hopper_component.yaml", args.probe_dir, seed=args.seed, n_probes=32, horizon=20)
     if not stream_path.exists():
         if not args.synthetic:
             raise FileNotFoundError(f"missing frozen stream: {stream_path}; generate it before running W0-W4")
         generate_fixed_stream(stream_path, seed=args.seed, steps=args.max_steps or 256, synthetic=True)
-    result = run_fixed_stream(stream_path, variant=args.variant, seed=args.seed, device=args.device, max_steps=args.max_steps, output=args.output)
+    result = run_fixed_stream(stream_path, variant=args.variant, probe_dir=args.probe_dir, seed=args.seed, device=args.device, max_steps=args.max_steps, output=args.output)
     print(json.dumps({"variant": result["variant"], "steps": result["steps"], "learner_payload_sha256": result["learner_payload_sha256"]}))
 
 

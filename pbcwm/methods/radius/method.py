@@ -276,7 +276,19 @@ class RadiusPbCWM(DynamicsLearner):
         self.events.append(RadiusEvent("ATLAS_EXPANDED", self.global_step, {"atlas_rank": self.rank}))
         self.refresh_pec_fisher()
         if self.recent and self.ref_initialized:
-            self._route_window(initialize=False)
+            self._refit_context_after_expansion()
+
+    def _refit_context_after_expansion(self) -> float:
+        """Refit the expanded context once without re-consuming the newest row."""
+
+        _obs, _actions, deltas, base, basis = self._window_features()
+        residual = deltas - base
+        prior = self._snapshot_posterior(self.active_prior_history[0]) if self.active_prior_history else self._initial_context()
+        with torch.no_grad():
+            routing = self.ref.evaluate_hypotheses(basis, residual, self.context, active_prior=prior)
+            self.context = self.ref.resolve_context(self.context, routing)
+            current_context = self.context.mean.unsqueeze(0).expand(len(self.recent), -1)
+            return float(explained_residual(deltas, base, basis, current_context, self.config.ref.residual_sigma))
 
     def _pad_covariance(self, covariance: torch.Tensor) -> torch.Tensor:
         padded = torch.zeros(self.rank, self.rank, device=covariance.device, dtype=covariance.dtype)

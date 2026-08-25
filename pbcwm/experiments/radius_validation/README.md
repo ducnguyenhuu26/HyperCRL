@@ -25,7 +25,7 @@ must not be reported as Hopper evidence:
 
 ```powershell
 python -m pbcwm.experiments.radius_validation.generate_fixed_stream --synthetic --steps 256 --output outputs/radius_validation/smoke_stream.npz
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --synthetic --stream outputs/radius_validation/smoke_stream.npz --variant W0 --max-steps 256
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --synthetic --stream outputs/radius_validation/smoke_stream.npz --probe-dir outputs/radius_validation/smoke_probe_banks --variant W0 --max-steps 256
 ```
 
 ## GPU/Hopper commands
@@ -34,16 +34,17 @@ After MuJoCo and CUDA are available, generate the real stream once:
 
 ```powershell
 python -m pbcwm.experiments.radius_validation.generate_fixed_stream --seed 0 --output outputs/radius_validation/hopper_fixed_stream_seed0.npz
+python -m pbcwm.experiments.radius_validation.generate_probe_bank --seed 0 --output-dir outputs/radius_validation/probe_banks_seed0
 ```
 
 Then run one variant at a time on the same file:
 
 ```powershell
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --variant W0 --device cuda --output outputs/radius_validation/w0.json
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --variant W1 --device cuda --output outputs/radius_validation/w1.json
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --variant W2 --device cuda --output outputs/radius_validation/w2.json
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --variant W3 --device cuda --output outputs/radius_validation/w3.json
-python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --variant W4 --device cuda --output outputs/radius_validation/w4.json
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --probe-dir outputs/radius_validation/probe_banks_seed0 --variant W0 --device cuda --output outputs/radius_validation/w0.json
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --probe-dir outputs/radius_validation/probe_banks_seed0 --variant W1 --device cuda --output outputs/radius_validation/w1.json
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --probe-dir outputs/radius_validation/probe_banks_seed0 --variant W2 --device cuda --output outputs/radius_validation/w2.json
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --probe-dir outputs/radius_validation/probe_banks_seed0 --variant W3 --device cuda --output outputs/radius_validation/w3.json
+python -m pbcwm.experiments.radius_validation.run_fixed_stream --stream outputs/radius_validation/hopper_fixed_stream_seed0.npz --probe-dir outputs/radius_validation/probe_banks_seed0 --variant W4 --device cuda --output outputs/radius_validation/w4.json
 ```
 
 The runner is intentionally not a full paper campaign launcher. Do not add

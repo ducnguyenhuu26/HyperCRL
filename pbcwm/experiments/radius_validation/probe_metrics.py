@@ -1,0 +1,57 @@
+"""Frozen-probe world-model metrics with explicit degeneracy semantics."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import torch
+
+from .probes import DynamicsProbeBank
+
+
+def _macro_r2(true: np.ndarray, predicted: np.ndarray, *, variance_epsilon: float = 1e-12) -> float | None:
+    if true.ndim != 2 or predicted.shape != true.shape or true.shape[0] < 2:
+        return None
+    variance = np.var(true, axis=0)
+    valid = variance > variance_epsilon
+    if not np.any(valid):
+        return None
+    centered = true[:, valid] - np.mean(true[:, valid], axis=0)
+    scores = 1.0 - np.sum((predicted[:, valid] - true[:, valid]) ** 2, axis=0) / np.sum(centered**2, axis=0)
+    return float(np.mean(scores))
+
+
+def _macro_nrmse(true: np.ndarray, predicted: np.ndarray, *, variance_epsilon: float = 1e-12, epsilon: float = 1e-8) -> float | None:
+    if true.ndim != 2 or predicted.shape != true.shape or true.shape[0] < 2:
+        return None
+    std = np.std(true, axis=0)
+    valid = std > variance_epsilon
+    if not np.any(valid):
+        return None
+    rmse = np.sqrt(np.mean((predicted[:, valid] - true[:, valid]) ** 2, axis=0))
+    return float(np.mean(rmse / (std[valid] + epsilon)))
+
+
+def evaluate_probe_bank(learner: Any, bank: DynamicsProbeBank) -> dict[str, float | None]:
+    """Evaluate recursive open-loop predictions without teacher forcing."""
+
+    if len(bank.probes) < 2:
+        return {"r2_at_1": None, "r2_at_H": None, "nrmse_at_H": None}
+    predictions = np.empty((len(bank.probes), bank.horizon, bank.obs_dim), dtype=np.float32)
+    true = np.stack([probe.true_obs for probe in bank.probes]).astype(np.float32)
+    for probe_index, probe in enumerate(bank.probes):
+        obs = torch.as_tensor(probe.initial_obs, dtype=torch.float32).unsqueeze(0)
+        for horizon_index, action_np in enumerate(probe.actions):
+            action = torch.as_tensor(action_np, dtype=torch.float32).unsqueeze(0)
+            obs = learner.predict(obs, action).detach().cpu()
+            predictions[probe_index, horizon_index] = obs.numpy()[0]
+    r2_by_horizon = [_macro_r2(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
+    nrmse_by_horizon = [_macro_nrmse(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
+    valid_r2 = [value for value in r2_by_horizon if value is not None]
+    valid_nrmse = [value for value in nrmse_by_horizon if value is not None]
+    return {
+        "r2_at_1": r2_by_horizon[0],
+        "r2_at_H": float(np.mean(valid_r2)) if valid_r2 else None,
+        "nrmse_at_H": float(np.mean(valid_nrmse)) if valid_nrmse else None,
+    }

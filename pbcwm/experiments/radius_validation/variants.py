@@ -9,9 +9,10 @@ from typing import Any
 import numpy as np
 import torch
 
-from pbcwm.baselines.static import StaticDynamicsLearner
 from pbcwm.methods.radius import RadiusPbCWM, load_radius_config
 from pbcwm.methods.radius.config import AblationConfig, AtlasConfig, RadiusConfig
+
+from .normalized_backbone import NormalizedPlainDynamicsLearner
 
 VARIANT_NAMES = ("W0", "W1", "W2", "W3", "W4")
 
@@ -24,18 +25,20 @@ def variant_config(name: str, base: RadiusConfig | None = None) -> RadiusConfig 
     if name not in VARIANT_NAMES:
         raise ValueError(f"unknown fixed-stream variant: {name}")
     config = base or load_radius_config(Path(__file__).parent / ".." / ".." / "configs" / "methods" / "radius.yaml")
-    fixed_rank = name in {"W1", "W2"}
-    max_rank = 3 if fixed_rank else 8
+    if name in {"W1", "W2"}:
+        initial_rank, max_rank = 3, 3
+    else:
+        initial_rank, max_rank = 2, 8
     return replace(
         config,
-        atlas=replace(config.atlas, initial_rank=3, max_rank=max_rank),
+        atlas=replace(config.atlas, initial_rank=initial_rank, max_rank=max_rank),
         ablations=AblationConfig(
             disable_recurrent_memory=name == "W1",
             disable_rne=name in {"W1", "W2"},
             disable_pec=name in {"W1", "W2", "W3"},
             disable_pfpa=True,
             hard_context_routing=False,
-            fixed_atlas_rank=fixed_rank,
+            fixed_atlas_rank=name in {"W1", "W2"},
         ),
     )
 
@@ -56,7 +59,9 @@ def build_variant(
     if name not in VARIANT_NAMES:
         raise ValueError(f"unknown fixed-stream variant: {name}")
     if name == "W0":
-        return StaticDynamicsLearner(
+        if action_low is None or action_high is None:
+            raise ValueError("W0 requires action bounds for matched preprocessing")
+        return NormalizedPlainDynamicsLearner(
             obs_dim,
             action_dim,
             hidden_dims=(256, 256),
@@ -65,6 +70,7 @@ def build_variant(
             batch_size=256,
             device=device,
             seed=seed,
+            action_scale=np.maximum(np.abs(action_low), np.abs(action_high)),
         )
     scale = None
     if action_low is not None and action_high is not None:
