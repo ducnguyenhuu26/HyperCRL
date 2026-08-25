@@ -18,6 +18,8 @@ method:
     new_prior_std: 2.0
     context_process_noise: 1.0e-3
     numerical_jitter: 1.0e-6
+    min_model_updates_before_tracking: 32
+    prototype_assignment_probability: 0.8
 
   memory:
     max_prototypes: 32
@@ -25,6 +27,9 @@ method:
     max_trace_for_consolidation: 0.5
     prototype_merge_mahalanobis: 2.5
     fusion_weight: 0.25
+    min_model_updates_before_consolidation: 256
+    stable_residual_threshold: 1.25
+    max_mean_variance_for_consolidation: 0.5
 
   rne:
     residual_threshold: 3.0
@@ -48,6 +53,7 @@ method:
     anchors_per_prototype: 128
     optimizer_integration: direct_parameter_step
     max_step_norm: 1.0
+    min_fisher_rank: 1
 
   pfpa:
     enabled: true
@@ -60,6 +66,7 @@ method:
     learning_rate: 3.0e-4
     weight_decay: 0.0
     replay_capacity: 50000
+    replay_context_mode: prototype_if_available
 
   ablations:
     disable_recurrent_memory: false

@@ -45,15 +45,42 @@ class RecurrentEvidenceFilter:
         mean, covariance = gaussian_context_posterior(basis_t, residual_t, active.mean.to(basis_t), prior_covariance, self.sigma, self.config.numerical_jitter)
         return ContextPosterior(mean, covariance, active.log_evidence, "active", active.prototype_id, dict(active.hypothesis_probabilities), active.new_hypothesis_probability)
 
-    def evaluate_hypotheses(self, basis_window: torch.Tensor, residual_window: torch.Tensor, active: ContextPosterior) -> RoutingResult:
+    def evaluate_hypotheses(
+        self,
+        basis_window: torch.Tensor,
+        residual_window: torch.Tensor,
+        active: ContextPosterior,
+        active_prior: ContextPosterior | None = None,
+    ) -> RoutingResult:
         """Score memory/new routes from independent priors over the window."""
 
         self._check(basis_window, residual_window)
+        prior = active if active_prior is None else active_prior
         candidates: list[ContextPosterior] = []
         log_masses: list[float] = []
+        prior_mean = prior.mean.to(self.device)
+        prior_covariance = prior.covariance.to(self.device)
+        active_mean, active_covariance = gaussian_context_posterior(
+            basis_window,
+            residual_window,
+            prior_mean,
+            prior_covariance,
+            self.sigma,
+            self.config.numerical_jitter,
+        )
+        active_evidence = log_marginal_evidence(
+            basis_window,
+            residual_window,
+            prior_mean,
+            prior_covariance,
+            self.sigma,
+            self.config.numerical_jitter,
+        )
+        candidates.append(ContextPosterior(active_mean, active_covariance, active_evidence, "active", prior.prototype_id))
+        log_masses.append(float(self.config.active_prior_bonus))
         if not self.disable_memory:
             for prototype in self.memory.prototypes:
-                if active.prototype_id == prototype.prototype_id:
+                if prior.prototype_id == prototype.prototype_id:
                     continue
                 mean = prototype.mean.to(self.device)
                 covariance = prototype.covariance.to(self.device)
@@ -71,10 +98,7 @@ class RecurrentEvidenceFilter:
             raise ValueError("REF prior masses must be positive")
         scores = torch.tensor([item.log_evidence for item in candidates], device=self.device) + torch.tensor(log_masses, device=self.device).log()
         weights = torch.softmax(scores, dim=0)
-        # With the active prototype deduplicated, a lone new candidate is not
-        # evidence against the active route; assigning it probability one
-        # would manufacture novelty from the absence of a second hypothesis.
-        new_probability = float(weights[-1]) if active.prototype_id is None or len(candidates) > 1 else 0.0
+        new_probability = float(weights[[item.source for item in candidates].index("new")])
         return RoutingResult(candidates, weights, new_probability)
 
     def resolve_context(self, active: ContextPosterior, routing_result: RoutingResult) -> ContextPosterior:
@@ -85,8 +109,14 @@ class RecurrentEvidenceFilter:
         best_index = int(torch.argmax(routing_result.weights))
         best_weight = float(routing_result.weights[best_index])
         best = routing_result.candidates[best_index]
-        if best.source == "new" and (len(routing_result.candidates) == 1 or best_weight <= 0.5):
-            active.hypothesis_probabilities = {"active": 1.0 - routing_result.new_probability, "new": routing_result.new_probability}
+        probabilities = {
+            f"{item.source}:{item.prototype_id}" if item.source == "memory" else item.source: float(weight)
+            for item, weight in zip(routing_result.candidates, routing_result.weights)
+        }
+        if best.source == "active":
+            if active.prototype_id is not None and best_weight < float(self.config.prototype_assignment_probability):
+                active.prototype_id = None
+            active.hypothesis_probabilities = probabilities
             active.new_hypothesis_probability = routing_result.new_probability
             return active
         if self.hard_routing:
@@ -97,8 +127,9 @@ class RecurrentEvidenceFilter:
                 torch.stack([item.covariance for item in routing_result.candidates]),
                 routing_result.weights,
             )
-            selected = ContextPosterior(selected_mean, selected_covariance, best.log_evidence, best.source, best.prototype_id)
-        selected.hypothesis_probabilities = {f"{item.source}:{item.prototype_id}" if item.source == "memory" else item.source: float(weight) for item, weight in zip(routing_result.candidates, routing_result.weights)}
+            selected = ContextPosterior(selected_mean, selected_covariance, best.log_evidence, best.source, None)
+        selected.prototype_id = best.prototype_id if best.source == "memory" and best_weight >= float(self.config.prototype_assignment_probability) else None
+        selected.hypothesis_probabilities = probabilities
         selected.new_hypothesis_probability = routing_result.new_probability
         return selected
 

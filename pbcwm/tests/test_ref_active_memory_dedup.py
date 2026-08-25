@@ -14,4 +14,5 @@ def test_ref_does_not_duplicate_active_prototype_in_window_routing():
     memory.prototypes[0].prototype_id = 7
     ref = RecurrentEvidenceFilter(2, 1.0, config, memory, torch.device("cpu"))
     result = ref.evaluate_hypotheses(torch.zeros(4, 1, 2), torch.zeros(4, 1), prototype)
-    assert [candidate.source for candidate in result.candidates] == ["new"]
+    assert [candidate.source for candidate in result.candidates] == ["active", "new"]
+    assert sum(candidate.source == "active" for candidate in result.candidates) == 1

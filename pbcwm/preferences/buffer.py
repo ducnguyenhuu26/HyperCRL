@@ -38,3 +38,12 @@ class PreferenceBuffer:
 
     def __iter__(self) -> Iterator[PreferenceExample]:
         return iter(self._storage)
+
+    def state_dict(self) -> dict:
+        return {"capacity": self.capacity, "storage": list(self._storage), "rng_state": self._rng.bit_generator.state}
+
+    def load_state_dict(self, state: dict) -> None:
+        self.capacity = state.get("capacity")
+        self._storage = list(state["storage"])
+        self._rng = np.random.default_rng()
+        self._rng.bit_generator.state = state["rng_state"]

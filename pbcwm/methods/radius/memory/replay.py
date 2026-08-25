@@ -25,12 +25,16 @@ class RadiusReplayBuffer:
             self.storage[self.next_index] = item
         self.next_index = (self.next_index + 1) % self.capacity
 
-    def sample(self, batch_size: int, rank: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def sample(self, batch_size: int, rank: int, device: torch.device, prototype_means: dict[int, torch.Tensor] | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if not 0 < batch_size <= len(self.storage):
             raise ValueError("batch_size must be in [1, len(replay)]")
         indices = self.rng.choice(len(self.storage), size=batch_size, replace=False)
         entries = [self.storage[int(index)] for index in indices]
-        contexts = torch.stack([torch.nn.functional.pad(entry.context_mean, (0, max(0, rank - entry.context_mean.numel())))[:rank] for entry in entries]).to(device)
+        context_values = []
+        for entry in entries:
+            context = prototype_means.get(entry.prototype_id, entry.context_mean) if prototype_means is not None and entry.prototype_id is not None else entry.context_mean
+            context_values.append(torch.nn.functional.pad(context, (0, max(0, rank - context.numel())))[:rank])
+        contexts = torch.stack(context_values).to(device)
         return (torch.stack([entry.obs for entry in entries]).to(device), torch.stack([entry.action for entry in entries]).to(device), torch.stack([entry.next_obs for entry in entries]).to(device), contexts)
 
     def __len__(self) -> int:

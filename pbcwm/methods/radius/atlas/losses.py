@@ -4,11 +4,11 @@ from .model import FactorizedDynamicsAtlas
 
 
 def atom_orthogonality_loss(basis: torch.Tensor) -> torch.Tensor:
+    """Control atom decorrelation and RMS scale in normalized delta space."""
     if basis.shape[-1] <= 1:
         return basis.new_zeros(())
-    flattened = basis.permute(0, 2, 1).reshape(-1, basis.shape[-1])
-    normalized = flattened / flattened.norm(dim=0, keepdim=True).clamp_min(1e-8)
-    gram = normalized.T @ normalized / max(1, normalized.shape[0])
+    flattened = basis.reshape(-1, basis.shape[-1])
+    gram = flattened.T @ flattened / max(1, flattened.shape[0])
     identity = torch.eye(basis.shape[-1], device=basis.device, dtype=basis.dtype)
     return (gram - identity).square().mean()
 
@@ -25,7 +25,9 @@ def atlas_loss(
 ) -> tuple[torch.Tensor, dict[str, float]]:
     prediction = atlas.predict_delta(obs, action, context)
     dynamics = (prediction - target_delta).square().mean()
-    context_penalty = context.square().mean()
+    context_energy = context.square().mean()
     orth_penalty = atom_orthogonality_loss(atlas.basis_outputs(obs, action))
-    total = dynamics + context_l2 * context_penalty + atom_orthogonality * orth_penalty
-    return total, {"loss": float(total.detach()), "dynamics_loss": float(dynamics.detach()), "context_l2": float(context_penalty.detach()), "atom_orthogonality": float(orth_penalty.detach())}
+    # Replay contexts are historical snapshots and are detached by design;
+    # adding context_l2 here would create a scalar term with no atlas gradient.
+    total = dynamics + atom_orthogonality * orth_penalty
+    return total, {"loss": float(total.detach()), "dynamics_loss": float(dynamics.detach()), "mean_context_energy": float(context_energy.detach()), "atom_gram_loss": float(orth_penalty.detach())}

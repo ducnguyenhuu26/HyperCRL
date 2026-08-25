@@ -55,3 +55,12 @@ class DisagreementQuerySelector:
             i, j = self._rng.choice(candidate_count, size=2, replace=False)
             pairs.add((min(int(i), int(j)), max(int(i), int(j))))
         return list(pairs)
+
+    def state_dict(self) -> dict:
+        return {"pair_pool_size": self.pair_pool_size, "rng_state": self._rng.bit_generator.state}
+
+    def load_state_dict(self, state: dict) -> None:
+        if int(state["pair_pool_size"]) != self.pair_pool_size:
+            raise ValueError("query selector configuration mismatch")
+        self._rng = np.random.default_rng()
+        self._rng.bit_generator.state = state["rng_state"]

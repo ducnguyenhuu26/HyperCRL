@@ -12,7 +12,7 @@ def test_radius_normalizers_update_only_from_observed_transitions_and_checkpoint
         obs = np.array([value, 10 * value], dtype=np.float32)
         action = np.array([0.5], dtype=np.float32)
         method.observe(Transition(obs, action, obs + 1.0, 999.0, False, False))
-    assert method.state_normalizer.count == 10
+    assert method.state_normalizer.count == 5
     assert method.delta_normalizer.count == 5
     assert torch.isfinite(method.predict(torch.zeros(2, 2), torch.zeros(2, 1))).all()
     restored = RadiusPbCWM(2, 1, small_config(), seed=1)

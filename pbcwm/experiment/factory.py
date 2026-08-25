@@ -25,7 +25,7 @@ CANONICAL_METHODS = (
 
 def _planner_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
     raw = dict(config or {})
-    return {
+    result = {
         "horizon": int(raw.get("horizon", 8)),
         "population_size": int(raw.get("population_size", raw.get("population", 64))),
         "elite_size": int(raw.get("elite_size", raw.get("elite_count", 8))),
@@ -33,6 +33,9 @@ def _planner_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
         "initial_std": raw.get("initial_std", 1.0),
         "discount": float(raw.get("discount", 1.0)),
     }
+    if "seed" in raw:
+        result["seed"] = int(raw["seed"])
+    return result
 
 
 def _preference_config(config: Mapping[str, Any] | None) -> dict[str, Any]:

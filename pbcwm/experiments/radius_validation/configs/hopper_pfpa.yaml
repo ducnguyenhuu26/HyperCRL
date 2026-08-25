@@ -1,0 +1,6 @@
+pfpa:
+  variants: [Q0_random, Q1_disagreement, Q2_pfpa]
+  seeds: [0]
+  labels: [100, 200]
+  same_timestamps_and_budget: true
+  planner_reward_label: DEV_ORACLE_REWARD_PLANNING

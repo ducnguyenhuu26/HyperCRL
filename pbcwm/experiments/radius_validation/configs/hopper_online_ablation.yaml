@@ -1,0 +1,6 @@
+online_ablation:
+  variants: [W1, W2, W3, W4]
+  seeds: [0]
+  planner_reward_label: DEV_ORACLE_REWARD_PLANNING
+  disallowed_learner_fields: [true_reward, stage_id, dynamics_id, visit_id, parameter_vector]
+  require_fixed_stream_complete: true

@@ -8,12 +8,14 @@ import yaml
 
 from .base import BenchmarkSpec
 from .nsgym.classic_control import make_pendulum_benchmark
+from .nsgym.mujoco import make_mujoco_benchmark
 
 _PENDULUM_NAME = "nsgym/pendulum-mass-abrupt-return-v0"
+_HOPPER_NAME = "nsgym/hopper-physics-abrupt-return-v0"
 
 
 def available_benchmarks() -> tuple[str, ...]:
-    return (_PENDULUM_NAME,)
+    return (_PENDULUM_NAME, _HOPPER_NAME)
 
 
 def load_benchmark_spec(path: str | Path) -> BenchmarkSpec:
@@ -25,6 +27,8 @@ def load_benchmark_spec(path: str | Path) -> BenchmarkSpec:
 
 
 def make_benchmark(name: str, spec: BenchmarkSpec, root_seed: int = 0):
-    if name != _PENDULUM_NAME or spec.name != _PENDULUM_NAME:
-        raise KeyError(f"unknown benchmark: {name}")
-    return make_pendulum_benchmark(spec, root_seed=root_seed)
+    if name == _PENDULUM_NAME and spec.name == _PENDULUM_NAME:
+        return make_pendulum_benchmark(spec, root_seed=root_seed)
+    if name == _HOPPER_NAME and spec.name == _HOPPER_NAME:
+        return make_mujoco_benchmark(spec, root_seed=root_seed)
+    raise KeyError(f"unknown benchmark: {name}")

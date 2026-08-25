@@ -93,7 +93,7 @@ def test_orthogonal_residual_and_context_memory_merge():
     posterior = ContextPosterior(torch.zeros(2), torch.eye(2) * 0.1, 0.0, "active")
     assert memory.consolidate(posterior, 1)[0] == "CONTEXT_PROTOTYPE_CREATED"
     near = ContextPosterior(torch.ones(2) * 0.01, torch.eye(2) * 0.1, 0.0, "active")
-    assert memory.consolidate(near, 2)[0] == "CONTEXT_PROTOTYPE_MERGED"
+    assert memory.consolidate(near, 2)[0] == "CONTEXT_PROTOTYPE_TOUCHED"
     assert len(memory.prototypes) == 1
 
 

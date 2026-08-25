@@ -38,6 +38,7 @@ class CEMPlanner:
         candidate_keep_per_iteration: int = 8,
         candidate_keep_final_elites: int = 8,
         dynamics_samples: int = 1,
+        seed: int | None = None,
     ) -> None:
         if horizon <= 0 or population_size <= 0 or elite_size <= 0 or num_iterations <= 0:
             raise ValueError("planner sizes and iteration count must be positive")
@@ -60,6 +61,11 @@ class CEMPlanner:
         self.candidate_keep_per_iteration = int(candidate_keep_per_iteration)
         self.candidate_keep_final_elites = int(candidate_keep_final_elites)
         self.dynamics_samples = int(dynamics_samples)
+        self.generator = torch.Generator(device=self.device)
+        if seed is None:
+            self.generator.seed()
+        else:
+            self.generator.manual_seed(int(seed))
 
         self.action_low = torch.as_tensor(action_low, dtype=torch.float32, device=self.device).flatten()
         self.action_high = torch.as_tensor(action_high, dtype=torch.float32, device=self.device).flatten()
@@ -106,6 +112,7 @@ class CEMPlanner:
                     self.horizon,
                     self.action_dim,
                     device=self.device,
+                    generator=self.generator,
                 )
                 sequences = torch.clamp(
                     mean.unsqueeze(0) + std.unsqueeze(0) * noise,
@@ -126,7 +133,7 @@ class CEMPlanner:
                         keep_indices = elite_indices[: self.candidate_keep_final_elites]
                     else:
                         keep_count = min(self.candidate_keep_per_iteration, self.population_size)
-                        keep_indices = torch.randperm(self.population_size, device=self.device)[:keep_count]
+                        keep_indices = torch.randperm(self.population_size, device=self.device, generator=self.generator)[:keep_count]
                     if states is not None and next_states is not None:
                         for index in keep_indices.tolist():
                             candidates.append(
@@ -146,6 +153,19 @@ class CEMPlanner:
             candidate_trajectories=candidates,
             elite_fraction=float(self.elite_size / self.population_size),
         )
+
+    def state_dict(self) -> dict:
+        return {
+            "generator_state": self.generator.get_state(),
+            "horizon": self.horizon,
+            "population_size": self.population_size,
+            "elite_size": self.elite_size,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        if int(state.get("horizon", self.horizon)) != self.horizon or int(state.get("population_size", self.population_size)) != self.population_size or int(state.get("elite_size", self.elite_size)) != self.elite_size:
+            raise ValueError("CEM checkpoint shape/configuration mismatch")
+        self.generator.set_state(state["generator_state"])
 
     def _rollout(
         self,

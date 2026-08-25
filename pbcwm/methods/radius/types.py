@@ -25,6 +25,7 @@ class ContextPrototype:
     last_active_step: int
     creation_step: int
     usage_count: int
+    reuse_count: int = 0
 
 
 @dataclass
@@ -57,6 +58,25 @@ class RadiusReplayItem:
     action: torch.Tensor
     next_obs: torch.Tensor
     context_mean: torch.Tensor
+    prototype_id: int | None = None
+
+
+@dataclass(frozen=True)
+class RadiusRecentItem:
+    """Raw physical transition retained for one-coordinate REF windows."""
+
+    obs: torch.Tensor
+    action: torch.Tensor
+    next_obs: torch.Tensor
+
+
+@dataclass(frozen=True)
+class ActivePriorSnapshot:
+    """Active posterior immediately before the aligned recent transition."""
+
+    mean: torch.Tensor
+    covariance: torch.Tensor
+    prototype_id: int | None
 
 
 @dataclass(frozen=True)

@@ -53,13 +53,14 @@ class CanonicalLifetimeRunner:
         self,
         env: Any,
         learner: Any,
-        planner: Any,
+        planner: Any | None,
         *,
         reward_fn: Any | None = None,
         query_handler: Callable[[Any, Any, Any, Any], int] | None = None,
         evaluation_handler: Callable[[Any, Any, Any], Any] | None = None,
         stage_handler: Callable[[StageInstance], None] | None = None,
         log_path: str | Path | None = None,
+        eval_env_factory: Callable[[Any, int], Any] | None = None,
     ) -> LifetimeRunSummary:
         env_config = self.config.environment(self.environment)
         ledger = BudgetLedger(self.schedule.total_steps, self.config.preference.total_budget, env_config.warmup_steps)
@@ -71,10 +72,28 @@ class CanonicalLifetimeRunner:
         resets: list[int] = []
         switches: list[int] = []
         try:
+            def evaluate_checkpoint(checkpoint: Any) -> None:
+                eval_env = None if eval_env_factory is None else eval_env_factory(checkpoint, self.streams["evaluation_seed"])
+                try:
+                    eval_context = None if eval_env is None else {"env": eval_env, "evaluation_seed": self.streams["evaluation_seed"]}
+                    query_owner = getattr(query_handler, "__self__", None)
+                    isolated_evaluation(
+                        learner,
+                        lambda current: evaluation_handler(checkpoint, current, eval_context),
+                        components=(agent_planner, planning_reward, query_owner),
+                    )
+                finally:
+                    close_eval = getattr(eval_env, "close", None)
+                    if callable(close_eval):
+                        close_eval()
+
             obs, _ = env.reset(seed=self.streams["environment_seed"])
+            agent_dynamics = getattr(learner, "dynamics", learner)
+            agent_planner = getattr(learner, "planner", planner)
+            planning_reward = reward_fn if reward_fn is not None else getattr(learner, "learned_reward", None)
             for checkpoint in checkpoints_by_step.get(0, []):
                 if evaluation_handler is not None:
-                    isolated_evaluation(learner, lambda current, item=checkpoint: evaluation_handler(item, current, env))
+                    evaluate_checkpoint(checkpoint)
             for global_step in range(self.schedule.total_steps):
                 stage = self.schedule.stage_at(global_step)
                 if global_step in self.schedule.boundary_steps:
@@ -82,13 +101,23 @@ class CanonicalLifetimeRunner:
                     if stage_handler is not None:
                         stage_handler(stage)
                 warmup = global_step < env_config.warmup_steps
-                action = env.action_space.sample() if warmup else planner.act(obs, learner, reward_fn)
+                if warmup:
+                    action = env.action_space.sample()
+                elif callable(getattr(learner, "plan", None)):
+                    plan_result = learner.plan(obs, collect_candidates=False)
+                    action = plan_result.action
+                else:
+                    if agent_planner is None:
+                        raise RuntimeError("canonical runner needs an agent.plan method or planner.act")
+                    action = agent_planner.act(obs, agent_dynamics, planning_reward)
                 next_obs, _reward, terminated, truncated, _info = env.step(action)
                 ledger.consume_environment(warmup=warmup)
                 learner.observe(build_agent_transition(obs, action, next_obs, bool(terminated), bool(truncated)))
-                updater = getattr(learner, "update", None)
+                updater = getattr(learner, "update_world_model", None)
                 if not callable(updater):
                     updater = getattr(learner, "update_dynamics", None)
+                if not callable(updater):
+                    updater = getattr(learner, "update", None)
                 if callable(updater):
                     updater(self.config.world_model.update_opportunities_per_env_step)
                 if global_step in query_by_step:
@@ -101,7 +130,7 @@ class CanonicalLifetimeRunner:
                     ledger.consume_preferences(produced)
                 for checkpoint in checkpoints_by_step.get(global_step + 1, []):
                     if evaluation_handler is not None:
-                        isolated_evaluation(learner, lambda current: evaluation_handler(checkpoint, current, env))
+                        evaluate_checkpoint(checkpoint)
                 if terminated or truncated:
                     resets.append(global_step + 1)
                     obs, _ = env.reset()

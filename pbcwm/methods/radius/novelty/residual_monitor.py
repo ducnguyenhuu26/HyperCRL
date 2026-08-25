@@ -34,7 +34,11 @@ class ResidualNoveltyMonitor:
         self.expansion_count = 0
         self.last_state = NoveltyState(0.0, 0.0, 0, False)
 
-    def update(self, standardized_residual: float, new_probability: float, step: int) -> NoveltyState:
+    def update(self, standardized_residual: float, new_probability: float, step: int, *, allow_trigger: bool = True) -> NoveltyState:
+        if not allow_trigger:
+            self.consecutive_trigger_count = 0
+            self.last_state = NoveltyState(float(standardized_residual), float(new_probability), 0, False)
+            return self.last_state
         high = standardized_residual >= self.residual_threshold and new_probability >= self.new_threshold and step >= self.cooldown_until
         self.consecutive_trigger_count = self.consecutive_trigger_count + 1 if high else 0
         should_expand = self.consecutive_trigger_count >= self.persistence_steps and step >= self.cooldown_until

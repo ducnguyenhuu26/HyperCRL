@@ -1,0 +1,8 @@
+fixed_stream:
+  behavior_policy: smoothed_random
+  initial_random_steps: 2000
+  smoothing_previous_weight: 0.8
+  smoothing_uniform_weight: 0.2
+  one_stream_for_all_variants: true
+  evaluate_without_reward: true
+  output: outputs/radius_validation/hopper_fixed_stream_seed0.npz

@@ -30,6 +30,7 @@ class NSGymPendulumBenchmark(gym.Env):
         self.oracle = BenchmarkOracle()
         self.global_env_step = 0
         self.episode_step = 0
+        self._has_initial_seed = False
         self.observation_space = gym.spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -49,10 +50,11 @@ class NSGymPendulumBenchmark(gym.Env):
         self.nsgym_env.t = self.global_env_step
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
-        environment_seed = self.seed_streams["environment"] if seed is None else seed
+        environment_seed = self.seed_streams["environment"] if seed is None and not self._has_initial_seed else seed
         if seed is not None:
             super().reset(seed=seed)
         raw_obs, info = self.nsgym_env.reset(seed=environment_seed, options=options)
+        self._has_initial_seed = True
         self._set_lifetime_clock()
         self.episode_step = 0
         self.oracle.reset_episode()

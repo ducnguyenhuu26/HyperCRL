@@ -51,15 +51,16 @@ class PreferenceRewardEnsemble:
             raise ValueError("ensemble_size, batch_size, and learning_rate must be positive")
         self.device = torch.device(device)
         self.batch_size = int(batch_size)
-        if seed is not None:
-            torch_generator = torch.Generator(device="cpu").manual_seed(seed)
+        torch_generator = torch.Generator(device="cpu")
+        if seed is None:
+            torch_generator.seed()
         else:
-            torch_generator = None
+            torch_generator.manual_seed(seed)
         self.models = nn.ModuleList()
         self.optimizers: list[torch.optim.Optimizer] = []
         for _ in range(ensemble_size):
-            model = RewardMLP(obs_dim, action_dim, hidden_dims)
-            if torch_generator is not None:
+            with torch.random.fork_rng(devices=[]):
+                model = RewardMLP(obs_dim, action_dim, hidden_dims)
                 self._initialize_with_generator(model, torch_generator)
             model.to(self.device)
             self.models.append(model)
@@ -114,6 +115,22 @@ class PreferenceRewardEnsemble:
                 score_b = model(obs_b, actions_b).sum()
                 probabilities.append(torch.sigmoid(score_a - score_b))
             return torch.stack(probabilities)
+
+    def state_dict(self) -> dict:
+        """Checkpoint model/optimizer state without touching global RNG."""
+
+        return {
+            "models": [model.state_dict() for model in self.models],
+            "optimizers": [optimizer.state_dict() for optimizer in self.optimizers],
+            "batch_size": self.batch_size,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        if len(state["models"]) != len(self.models) or len(state["optimizers"]) != len(self.optimizers):
+            raise ValueError("reward ensemble size mismatch")
+        for model, model_state, optimizer, optimizer_state in zip(self.models, state["models"], self.optimizers, state["optimizers"]):
+            model.load_state_dict(model_state)
+            optimizer.load_state_dict(optimizer_state)
 
     def update(self, preference_buffer: PreferenceBuffer, num_steps: int = 1) -> dict[str, float]:
         if num_steps < 0:
