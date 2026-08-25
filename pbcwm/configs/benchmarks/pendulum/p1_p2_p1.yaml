@@ -1,0 +1,20 @@
+benchmark:
+  name: nsgym/pendulum-mass-abrupt-return-v0
+  provider: nsgym
+  base_env: Pendulum-v1
+  parameter: m
+  notifications:
+    change: false
+    delta_change: false
+  fixed_parameters:
+    l: 1.0
+    g: 10.0
+    dt: 0.05
+  regimes:
+    - start_step: 0
+      value: 1.0
+    - start_step: 8
+      value: 1.5
+    - start_step: 16
+      value: 1.0
+  total_steps: 24

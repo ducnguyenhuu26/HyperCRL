@@ -1,0 +1,67 @@
+method:
+  name: radius_pb_cwm
+
+  atlas:
+    hidden_size: 256
+    initial_rank: 2
+    max_rank: 16
+    context_l2: 1.0e-4
+    atom_orthogonality: 1.0e-3
+
+  ref:
+    context_window: 128
+    min_context_samples: 32
+    residual_sigma: 1.0
+    active_prior_bonus: 2.0
+    memory_prior_mass: 1.0
+    new_prior_mass: 0.25
+    new_prior_std: 2.0
+    numerical_jitter: 1.0e-6
+
+  memory:
+    max_prototypes: 32
+    min_stable_steps: 256
+    max_trace_for_consolidation: 0.5
+    prototype_merge_mahalanobis: 2.5
+    fusion_weight: 0.25
+
+  rne:
+    residual_threshold: 3.0
+    new_hypothesis_threshold: 0.6
+    persistence_steps: 64
+    cooldown_steps: 1000
+    orthogonalization_ridge: 1.0e-4
+    initialization_updates: 200
+    initialization_lr: 1.0e-3
+    new_context_variance: 1.0
+
+  pec:
+    enabled: true
+    mode: trust_region
+    forgetting_budget: 1.0e-3
+    fisher_damping: 1.0e-3
+    predictive_sigma: 1.0
+    fisher_sketch_rank: 32
+    fisher_refresh_interval: 2000
+    anchors_per_prototype: 128
+    optimizer_integration: transformed_gradient
+
+  pfpa:
+    enabled: true
+    context_samples: 4
+    frontier_fraction: 0.8
+    max_pair_action_similarity: 0.98
+
+  training:
+    batch_size: 256
+    learning_rate: 3.0e-4
+    weight_decay: 0.0
+    replay_capacity: 50000
+
+  ablations:
+    disable_recurrent_memory: false
+    disable_rne: false
+    disable_pec: false
+    disable_pfpa: false
+    hard_context_routing: false
+    fixed_atlas_rank: false

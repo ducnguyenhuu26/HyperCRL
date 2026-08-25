@@ -1,0 +1,55 @@
+seed: 0
+device: cpu
+
+env:
+  name: Pendulum-v1
+  dynamics_schedule:
+    - step: 0
+      mass: 1.0
+      length: 1.0
+      gravity: 10.0
+    - step: 200
+      mass: 1.5
+      length: 1.0
+      gravity: 10.0
+
+training:
+  total_steps: 400
+  dynamics_random_steps: 40
+  dynamics_learning_starts: 32
+  dynamics_updates_per_step: 1
+  dynamics_batch_size: 32
+  log_interval: 50
+  log_path: outputs/pendulum_moprl_online_ft.jsonl
+  heldout_preference_examples: 8
+
+baseline:
+  name: moprl_online_ft
+  dynamics_window_size: 128
+
+model:
+  hidden_dims: [64, 64]
+  learning_rate: 0.003
+
+planner:
+  horizon: 8
+  population_size: 64
+  elite_size: 8
+  num_iterations: 2
+  initial_std: 1.0
+
+preference:
+  ensemble_size: 3
+  hidden_dims: [64, 64]
+  learning_rate: 0.003
+  reward_batch_size: 8
+  bootstrap_queries: 16
+  bootstrap_horizon: 8
+  min_preferences_before_planning: 12
+  query_interval_steps: 100
+  queries_per_round: 4
+  pair_pool_size: 64
+  reward_updates_per_round: 10
+  candidate_keep_per_iteration: 6
+  candidate_keep_final_elites: 6
+  teacher_skip_margin: 0.0

@@ -1,0 +1,16 @@
+metrics:
+  world_model:
+    horizons: [1, 5, 10]
+    primary_horizon: null
+    r2_min_variance: 1.0e-12
+    eps: 1.0e-8
+  continual:
+    auc_window_steps: null
+    few_shot_interactions: []
+  reward:
+    kendall_variant: tau_b
+  planning:
+    compute_dynamic_regret: true
+  bootstrap:
+    enabled: false
+    num_samples: 1000

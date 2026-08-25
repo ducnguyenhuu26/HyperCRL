@@ -1,7 +1,44 @@
+.ipynb_checkpoints/
+
+# Python caches and local tooling
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and OS files
+.idea/
 .vscode/
+.DS_Store
+Thumbs.db
+
+# Experiment data, logs, and generated artifacts
 ckpts/
+checkpoints/
 data/
 runs/
+outputs/
 lightning_logs/
-.ipynb_checkpoints/
-**/__pycache__
+*.log
+*.out
+*.err
+*.ckpt
+*.pth
+*.pt
+*.onnx
+
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
