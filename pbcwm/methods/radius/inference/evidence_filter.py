@@ -142,6 +142,42 @@ class RecurrentEvidenceFilter:
         selected.new_hypothesis_probability = routing_result.new_probability
         return selected
 
+    def resolve_refit_context(self, routing_result: RoutingResult) -> ContextPosterior:
+        """Resolve fitted full-window candidates without retaining a padded active state."""
+
+        if not routing_result.candidates:
+            raise ValueError("cannot refit context without routing candidates")
+        best_index = int(torch.argmax(routing_result.weights))
+        best_weight = float(routing_result.weights[best_index])
+        best = routing_result.candidates[best_index]
+        probabilities = {
+            f"{item.source}:{item.prototype_id}" if item.source == "memory" else item.source: float(weight)
+            for item, weight in zip(routing_result.candidates, routing_result.weights)
+        }
+        if self.hard_routing:
+            selected = best
+        else:
+            mean, covariance = moment_match(
+                torch.stack([item.mean for item in routing_result.candidates]),
+                torch.stack([item.covariance for item in routing_result.candidates]),
+                routing_result.weights,
+            )
+            selected = ContextPosterior(mean, covariance, best.log_evidence, best.source, None)
+        threshold = float(self.config.prototype_assignment_probability)
+        stored_ids = {prototype.prototype_id for prototype in self.memory.prototypes}
+        if (
+            best_weight >= threshold
+            and best.prototype_id is not None
+            and best.prototype_id in stored_ids
+            and best.source in {"active", "memory"}
+        ):
+            selected.prototype_id = best.prototype_id
+        else:
+            selected.prototype_id = None
+        selected.hypothesis_probabilities = probabilities
+        selected.new_hypothesis_probability = routing_result.new_probability
+        return selected
+
     def infer(self, basis: torch.Tensor, residual: torch.Tensor, active: ContextPosterior) -> ContextPosterior:
         """Compatibility wrapper that processes a batch once per sample."""
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from collections.abc import Sequence
 
 import numpy as np
@@ -12,35 +11,38 @@ from torch import nn
 from pbcwm.core.dynamics import DynamicsLearner
 from pbcwm.core.normalization import RunningNormalizer
 from pbcwm.core.types import Transition
-from pbcwm.models.mlp_dynamics import MLPDynamicsModel
+from pbcwm.methods.radius.atlas.backbone import SharedDynamicsBackbone
 
 
 class _RawReplay:
     def __init__(self, capacity: int, seed: int | None) -> None:
         self.capacity = int(capacity)
-        self.storage: deque[Transition] = deque(maxlen=self.capacity)
+        self.storage: list[Transition] = []
+        self.next_index = 0
         self.rng = np.random.default_rng(seed)
 
     def add(self, transition: Transition) -> None:
-        self.storage.append(
-            Transition(
-                np.asarray(transition.obs, dtype=np.float32).copy(),
-                np.asarray(transition.action, dtype=np.float32).copy(),
-                np.asarray(transition.next_obs, dtype=np.float32).copy(),
-                0.0,
-                bool(transition.terminated),
-                bool(transition.truncated),
-            )
+        copied = Transition(
+            np.asarray(transition.obs, dtype=np.float32).copy(),
+            np.asarray(transition.action, dtype=np.float32).copy(),
+            np.asarray(transition.next_obs, dtype=np.float32).copy(),
+            0.0,
+            bool(transition.terminated),
+            bool(transition.truncated),
         )
+        if len(self.storage) < self.capacity:
+            self.storage.append(copied)
+        else:
+            self.storage[self.next_index] = copied
+        self.next_index = (self.next_index + 1) % self.capacity
 
     def sample(self, batch_size: int) -> list[Transition]:
         indices = self.rng.choice(len(self.storage), size=batch_size, replace=False)
-        entries = list(self.storage)
-        return [entries[int(index)] for index in indices]
+        return [self.storage[int(index)] for index in indices]
 
 
 class NormalizedPlainDynamicsLearner(DynamicsLearner):
-    """Plain MLP using exactly RADIUS's lifetime coordinate convention.
+    """Plain SiLU backbone using exactly RADIUS's lifetime convention.
 
     W0 stores raw transitions, updates each normalizer once per transition, and
     exposes raw-coordinate predictions. It intentionally owns no atlas,
@@ -73,7 +75,7 @@ class NormalizedPlainDynamicsLearner(DynamicsLearner):
         fork_devices = [] if self.device.type == "cpu" else [self.device.index or torch.cuda.current_device()]
         with torch.random.fork_rng(devices=fork_devices):
             torch.manual_seed(local_seed)
-            self.model = MLPDynamicsModel(self.obs_dim, self.action_dim, hidden_dims).to(self.device)
+            self.model = SharedDynamicsBackbone(self.obs_dim, self.action_dim, hidden_size=int(hidden_dims[0])).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(learning_rate))
         self.replay = _RawReplay(replay_capacity, seed)
         self.model_updates_total = 0

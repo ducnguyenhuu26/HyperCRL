@@ -286,7 +286,7 @@ class RadiusPbCWM(DynamicsLearner):
         prior = self._snapshot_posterior(self.active_prior_history[0]) if self.active_prior_history else self._initial_context()
         with torch.no_grad():
             routing = self.ref.evaluate_hypotheses(basis, residual, self.context, active_prior=prior)
-            self.context = self.ref.resolve_context(self.context, routing)
+            self.context = self.ref.resolve_refit_context(routing)
             current_context = self.context.mean.unsqueeze(0).expand(len(self.recent), -1)
             return float(explained_residual(deltas, base, basis, current_context, self.config.ref.residual_sigma))
 

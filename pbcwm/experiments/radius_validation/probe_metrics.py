@@ -40,12 +40,11 @@ def evaluate_probe_bank(learner: Any, bank: DynamicsProbeBank) -> dict[str, floa
         return {"r2_at_1": None, "r2_at_H": None, "nrmse_at_H": None}
     predictions = np.empty((len(bank.probes), bank.horizon, bank.obs_dim), dtype=np.float32)
     true = np.stack([probe.true_obs for probe in bank.probes]).astype(np.float32)
-    for probe_index, probe in enumerate(bank.probes):
-        obs = torch.as_tensor(probe.initial_obs, dtype=torch.float32).unsqueeze(0)
-        for horizon_index, action_np in enumerate(probe.actions):
-            action = torch.as_tensor(action_np, dtype=torch.float32).unsqueeze(0)
-            obs = learner.predict(obs, action).detach().cpu()
-            predictions[probe_index, horizon_index] = obs.numpy()[0]
+    obs = torch.as_tensor(np.stack([probe.initial_obs for probe in bank.probes]), dtype=torch.float32)
+    actions = torch.as_tensor(np.stack([probe.actions for probe in bank.probes]), dtype=torch.float32)
+    for horizon_index in range(bank.horizon):
+        obs = learner.predict(obs, actions[:, horizon_index])
+        predictions[:, horizon_index] = obs.detach().cpu().numpy()
     r2_by_horizon = [_macro_r2(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
     nrmse_by_horizon = [_macro_nrmse(true[:, index], predictions[:, index]) for index in range(bank.horizon)]
     valid_r2 = [value for value in r2_by_horizon if value is not None]

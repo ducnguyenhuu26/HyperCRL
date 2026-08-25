@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import gymnasium as gym
+import mujoco
 import numpy as np
 from ns_gym.schedulers import DiscreteScheduler
 from ns_gym.update_functions import StepWiseUpdate
@@ -24,9 +25,10 @@ class NSGymHopperBenchmark(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, nsgym_env: MujocoWrapper, spec: BenchmarkSpec, root_seed: int):
+    def __init__(self, nsgym_env: MujocoWrapper, spec: BenchmarkSpec, root_seed: int, base_values: dict[str, float]):
         self.nsgym_env = nsgym_env
         self.spec = spec
+        self.base_values = dict(base_values)
         self.root_seed = int(root_seed)
         self.seed_streams = seed_streams(self.root_seed)
         self.oracle = BenchmarkOracle()
@@ -55,6 +57,8 @@ class NSGymHopperBenchmark(gym.Env):
             super().reset(seed=seed)
         raw_obs, _info = self.nsgym_env.reset(seed=environment_seed, options=options)
         self._has_initial_seed = True
+        active = self.spec.regime_at(self.global_env_step)
+        _apply_hopper_parameters(self.nsgym_env.unwrapped.model, self.nsgym_env.unwrapped.data, self.base_values, dict(active.parameters))
         self._set_lifetime_clock()
         self.episode_step = 0
         self.oracle.reset_episode()
@@ -112,6 +116,18 @@ def _validate_hopper_spec(spec: BenchmarkSpec) -> None:
         raise ValueError("Hopper parameter scales must be positive")
 
 
+def _apply_hopper_parameters(model, data, base_values: dict[str, float], parameters: dict[str, float]) -> None:
+    """Apply the initial physical regime directly to the MuJoCo model."""
+
+    torso_id = model.body("torso").id
+    floor_id = model.geom("floor").id
+    thigh_id = model.joint("thigh_joint").id
+    model.body_mass[torso_id] = base_values["torso_mass"] * float(parameters["torso_mass"])
+    model.geom_friction[floor_id, 0] = base_values["floor_friction"] * float(parameters["floor_friction"])
+    model.dof_damping[thigh_id] = base_values["thigh_joint_damping"] * float(parameters["thigh_joint_damping"])
+    mujoco.mj_forward(model, data)
+
+
 def make_mujoco_benchmark(spec: BenchmarkSpec, root_seed: int = 0) -> NSGymHopperBenchmark:
     """Build Hopper with regime values interpreted as positive parameter scales."""
 
@@ -136,4 +152,5 @@ def make_mujoco_benchmark(spec: BenchmarkSpec, root_seed: int = 0) -> NSGymHoppe
         delta_change_notification=False,
         persistent_params=True,
     )
-    return NSGymHopperBenchmark(wrapped, spec, root_seed)
+    _apply_hopper_parameters(wrapped.unwrapped.model, wrapped.unwrapped.data, base_values, dict(spec.regimes[0].parameters))
+    return NSGymHopperBenchmark(wrapped, spec, root_seed, base_values)
