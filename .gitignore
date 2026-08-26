@@ -20,6 +20,8 @@ ENV/
 # IDE and OS files
 .idea/
 .vscode/
+!paper/.vscode/
+!paper/.vscode/settings.json
 .DS_Store
 Thumbs.db
 
