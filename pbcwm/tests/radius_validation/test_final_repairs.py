@@ -29,6 +29,25 @@ def test_radius_replay_preserves_prototype_id_and_uses_current_mean():
     assert torch.equal(contexts[0], torch.tensor([3.0, 4.0]))
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required for mixed-device replay coverage")
+def test_radius_replay_normalizes_mixed_context_devices_before_stacking():
+    buffer = RadiusReplayBuffer(4, seed=0)
+    buffer.add(RadiusReplayItem(torch.zeros(2), torch.zeros(1), torch.ones(2), torch.zeros(2), None))
+    buffer.add(RadiusReplayItem(torch.zeros(2), torch.zeros(1), torch.ones(2), torch.zeros(2), 7))
+
+    *_prefix, contexts = buffer.sample(
+        2,
+        2,
+        torch.device("cuda"),
+        prototype_means={7: torch.tensor([3.0, 4.0], device="cuda")},
+    )
+
+    assert contexts.device.type == "cuda"
+    assert torch.equal(contexts[1], torch.tensor([3.0, 4.0], device="cuda")) or torch.equal(
+        contexts[0], torch.tensor([3.0, 4.0], device="cuda")
+    )
+
+
 def test_w0_uses_radius_coordinate_convention_without_method_components():
     learner = build_variant("W0", 2, 1, action_low=np.array([-2.0]), action_high=np.array([2.0]), seed=0)
     transition = Transition(np.array([1.0, 2.0], dtype=np.float32), np.array([1.0], dtype=np.float32), np.array([2.0, 4.0], dtype=np.float32), 0.0, False, False)

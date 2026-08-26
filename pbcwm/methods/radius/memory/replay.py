@@ -36,11 +36,16 @@ class RadiusReplayBuffer:
     def sample(self, batch_size: int, rank: int, device: torch.device, prototype_means: dict[int, torch.Tensor] | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if not 0 < batch_size <= len(self.storage):
             raise ValueError("batch_size must be in [1, len(replay)]")
+        target_device = torch.device(device)
         indices = self.rng.choice(len(self.storage), size=batch_size, replace=False)
         entries = [self.storage[int(index)] for index in indices]
         context_values = []
         for entry in entries:
             context = prototype_means.get(entry.prototype_id, entry.context_mean) if prototype_means is not None and entry.prototype_id is not None else entry.context_mean
+            # Replay entries are intentionally stored on CPU, while current
+            # prototype means live on the learner device. Normalize the
+            # selected context before padding so a mixed batch can be stacked.
+            context = context.detach().to(device=target_device, dtype=torch.float32)
             context_values.append(torch.nn.functional.pad(context, (0, max(0, rank - context.numel())))[:rank])
         return (
             move_batch(torch.stack([entry.obs for entry in entries]), device),
