@@ -20,8 +20,6 @@ ENV/
 # IDE and OS files
 .idea/
 .vscode/
-!paper/.vscode/
-!paper/.vscode/settings.json
 .DS_Store
 Thumbs.db
 
@@ -45,7 +43,8 @@ lightning_logs/
 .env.*
 !.env.example
 
-# LaTeX build products (keep paper sources and bibliography under version control)
+# Private local paper workspace
+/paper/
 paper/**/*.aux
 paper/**/*.bbl
 paper/**/*.blg
