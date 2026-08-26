@@ -291,9 +291,13 @@ class HyperCRLAdaptDynamicsLearner(DynamicsLearner):
         self._last_update = dict(state["last_update"])
 
     def _create_embedding(self) -> int:
+        # Keep the private RNG on CPU for reproducible indexing and generate
+        # the infrequent embedding sample there before transferring it to the
+        # learner device.  A CPU generator cannot be passed to torch.randn
+        # with a CUDA output device.
         embedding = torch.randn(
-            self.embedding_dim, generator=self._rng, device=self.device, dtype=torch.float32
-        ) * self.embedding_init_std
+            self.embedding_dim, generator=self._rng, device="cpu", dtype=torch.float32
+        ).to(self.device) * self.embedding_init_std
         self.embeddings.append(nn.Parameter(embedding))
         self.embedding_birth_steps.append(self.global_step)
         return self.num_embeddings - 1

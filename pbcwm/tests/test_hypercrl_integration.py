@@ -1,9 +1,31 @@
 import numpy as np
+import pytest
+import torch
 
+from pbcwm.baselines.hypercrl.learner import HyperCRLAdaptDynamicsLearner
 from pbcwm.baselines.hypercrl.online import HyperCRLAdaptOnline
 from pbcwm.core.types import Transition
 from pbcwm.envs.nonstationary_pendulum import NonstationaryPendulum
 from pbcwm.rewards.pendulum import PendulumReward
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
+def test_hypercrl_embedding_creation_supports_cuda() -> None:
+    learner = HyperCRLAdaptDynamicsLearner(
+        obs_dim=3,
+        action_dim=1,
+        embedding_dim=4,
+        hyper_hidden_dims=(8,),
+        target_hidden_dims=(8,),
+        dynamics_batch_size=2,
+        device="cuda",
+        seed=0,
+    )
+
+    embedding_id = learner._create_embedding()
+
+    assert embedding_id == 0
+    assert learner.embeddings[0].device.type == "cuda"
 
 
 def test_hypercrl_online_uses_shared_preference_and_cem_components() -> None:
