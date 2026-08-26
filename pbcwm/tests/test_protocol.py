@@ -63,10 +63,12 @@ def test_checkpoints_are_sorted_deduplicated_and_include_recurrence_few_shot():
     config = load_protocol_config(CONFIG)
     schedule = build_lifetime_schedule(config, "Pendulum-v1", 0)
     checkpoints = build_evaluation_checkpoints(config, schedule)
-    keys = [(point.global_step, point.few_shot_interactions) for point in checkpoints]
-    assert keys == sorted(keys, key=lambda item: (item[0], item[1] is not None))
+    keys = [(point.global_step, point.segment_id, point.few_shot_interactions) for point in checkpoints]
+    assert keys == sorted(keys, key=lambda item: (item[0], item[2] is not None, item[1]))
     assert len(keys) == len(set(keys))
     assert any(point.visit_id == 1 and point.few_shot_interactions == 16 for point in checkpoints)
+    boundary = schedule.boundary_steps[0]
+    assert {(point.segment_id, point.normalized_fraction) for point in checkpoints if point.global_step == boundary} >= {(0, 1.0), (1, 0.0)}
 
 
 def test_shared_planner_and_tuning_budget():

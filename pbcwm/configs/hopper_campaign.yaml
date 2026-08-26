@@ -1,0 +1,112 @@
+campaign:
+  name: hopper_screen_v1_5baselines_radius
+  environment: Hopper-v5
+  benchmark_config: pbcwm/configs/benchmarks/hopper/screen_v1_single_schedule.yaml
+  protocol_config: pbcwm/configs/protocol_hopper_screen_v1.yaml
+  output_dir: outputs/hopper_screen_v1
+  seeds: [200, 201, 202]
+  methods: [moprl_online_ft, gpmm, hypercrl_adapt, vblrl_adapt, curious_replay_adapt, radius_pb_cwm]
+  max_parallel: 4
+  device: cuda
+  cuda_devices: [0]
+
+method_defaults:
+  model:
+    hidden_dims: [128, 128]
+    learning_rate: 0.001
+  planner:
+    horizon: 10
+    population_size: 64
+    elite_size: 8
+    num_iterations: 2
+    initial_std: 1.0
+    candidate_keep_per_iteration: 8
+    candidate_keep_final_elites: 8
+  preference:
+    ensemble_size: 3
+    hidden_dims: [64, 64]
+    learning_rate: 0.0003
+    reward_batch_size: 16
+    min_preferences_before_planning: 30
+    pair_pool_size: 64
+    teacher_skip_margin: 0.0
+    candidate_keep_per_iteration: 8
+    candidate_keep_final_elites: 8
+  training:
+    replay_capacity: 20000
+    batch_size: 128
+
+methods:
+  moprl_online_ft:
+    moprl:
+      dynamics_window_size: 20000
+      dynamics_batch_size: 128
+  gpmm:
+    gpmm:
+      alpha: 1.0
+      sticky_bonus: 10.0
+      transition_base_count: 1.0
+      expert_min_points_before_competition: 16
+      gp_fit_steps: 1
+      gp_learning_rate: 0.05
+      max_points_per_expert: 128
+      merge_enabled: true
+      merge_burnin_points: 32
+      merge_threshold: 0.5
+      prune_probationary: true
+      min_predictive_variance: 1.0e-5
+      max_predictive_variance: 1.0e3
+      prior_variance: 1.0
+      observation_noise: 0.05
+  hypercrl_adapt:
+    hypercrl:
+      embedding_dim: 16
+      embedding_init_std: 0.1
+      hyper_hidden_dims: [128, 128]
+      target_hidden_dims: [128, 128]
+      hyper_lr: 0.001
+      embedding_lr: 0.001
+      regularization_beta: 0.1
+      current_regime_buffer_size: 2000
+      dynamics_batch_size: 128
+      router_window_size: 64
+      shift_threshold: 0.05
+      reuse_threshold: 0.03
+      consecutive_trigger_windows: 2
+      router_cooldown_steps: 256
+      gradient_clip_norm: 10.0
+  vblrl_adapt:
+    vblrl:
+      hidden_dims: [128, 128]
+      posterior_learning_rate: 0.001
+      world_learning_rate: 0.001
+      world_buffer_size: 256
+      current_buffer_size: 256
+      dynamics_batch_size: 128
+      dynamics_updates_per_step: 1
+      world_updates_per_interval: 2
+      world_update_interval_steps: 100
+      router_window_size: 64
+      router_posterior_samples: 5
+      shift_threshold: 4.0
+      reuse_threshold: 3.0
+      consecutive_trigger_windows: 2
+      router_cooldown_steps: 256
+      planning_model_samples: 3
+      min_logvar: -10.0
+      max_logvar: 2.0
+      gradient_clip_norm: 10.0
+  curious_replay_adapt:
+    curious_replay:
+      hidden_dims: [128, 128]
+      capacity: 20000
+      batch_size: 128
+      learning_rate: 0.001
+      beta: 0.7
+      alpha: 0.6
+      epsilon: 1.0e-6
+      count_weight_c: 1.0
+      initial_priority: 1.0
+      gradient_clip_norm: 10.0
+  radius_pb_cwm:
+    radius_config: pbcwm/configs/methods/radius.yaml

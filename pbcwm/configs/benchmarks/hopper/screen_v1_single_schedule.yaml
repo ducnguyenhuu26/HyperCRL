@@ -1,0 +1,22 @@
+benchmark:
+  name: nsgym/hopper-physics-abrupt-return-v0
+  provider: nsgym
+  base_env: Hopper-v5
+  parameter: hopper_physics
+  total_steps: 60000
+  notifications:
+    change: false
+    delta_change: false
+  regimes:
+    - start_step: 0
+      parameters: {torso_mass: 1.0, floor_friction: 1.0, thigh_joint_damping: 1.0}
+    - start_step: 10000
+      parameters: {torso_mass: 1.25, floor_friction: 1.0, thigh_joint_damping: 1.0}
+    - start_step: 20000
+      parameters: {torso_mass: 1.0, floor_friction: 0.75, thigh_joint_damping: 1.0}
+    - start_step: 30000
+      parameters: {torso_mass: 1.0, floor_friction: 1.0, thigh_joint_damping: 1.25}
+    - start_step: 40000
+      parameters: {torso_mass: 1.0, floor_friction: 0.75, thigh_joint_damping: 1.0}
+    - start_step: 50000
+      parameters: {torso_mass: 1.25, floor_friction: 1.0, thigh_joint_damping: 1.0}

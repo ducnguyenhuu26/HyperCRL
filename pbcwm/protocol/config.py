@@ -51,6 +51,7 @@ class WorldModelProtocolConfig:
     min_buffer_before_update: int
     update_opportunities_per_env_step: int
     default_neural_batch_size: int
+    update_interval_steps: int = 1
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,10 @@ class EvaluationProtocolConfig:
     recurrence_interactions: tuple[int, ...]
     planning_episodes_regular: int
     planning_episodes_stage_end: int
+    heldout_preference_pairs: int = 32
+    heldout_preference_horizon: int = 10
+    planning_episode_horizon: int = 250
+    reward_ablation_episodes_stage_end: int = 0
 
 
 @dataclass(frozen=True)
@@ -159,16 +164,35 @@ def protocol_from_mapping(data: Mapping[str, Any]) -> ProtocolConfig:
     raw_reward = _mapping(root.get("reward_model"), "protocol.reward_model")
     reward_model = RewardModelProtocolConfig(int(raw_reward["ensemble_size"]), int(raw_reward["batch_size"]), int(raw_reward["updates_per_query_round"]))
     raw_world = _mapping(root.get("world_model"), "protocol.world_model")
-    world_model = WorldModelProtocolConfig(int(raw_world["min_buffer_before_update"]), int(raw_world["update_opportunities_per_env_step"]), int(raw_world["default_neural_batch_size"]))
+    world_model = WorldModelProtocolConfig(
+        int(raw_world["min_buffer_before_update"]),
+        int(raw_world["update_opportunities_per_env_step"]),
+        int(raw_world["default_neural_batch_size"]),
+        int(raw_world.get("update_interval_steps", 1)),
+    )
+    if world_model.update_interval_steps <= 0:
+        raise ValueError("world_model.update_interval_steps must be positive")
     raw_evaluation = _mapping(root.get("evaluation"), "protocol.evaluation")
     evaluation = EvaluationProtocolConfig(
         stage_fractions=tuple(float(item) for item in raw_evaluation["stage_fractions"]),
         recurrence_interactions=tuple(int(item) for item in raw_evaluation["recurrence_interactions"]),
         planning_episodes_regular=int(raw_evaluation["planning_episodes_regular"]),
         planning_episodes_stage_end=int(raw_evaluation["planning_episodes_stage_end"]),
+        heldout_preference_pairs=int(raw_evaluation.get("heldout_preference_pairs", 32)),
+        heldout_preference_horizon=int(raw_evaluation.get("heldout_preference_horizon", 10)),
+        planning_episode_horizon=int(raw_evaluation.get("planning_episode_horizon", 250)),
+        reward_ablation_episodes_stage_end=int(raw_evaluation.get("reward_ablation_episodes_stage_end", 0)),
     )
     if not evaluation.stage_fractions or any(not 0 <= fraction <= 1 for fraction in evaluation.stage_fractions):
         raise ValueError("evaluation.stage_fractions must lie in [0, 1]")
+    if min(
+        evaluation.planning_episodes_regular,
+        evaluation.planning_episodes_stage_end,
+        evaluation.reward_ablation_episodes_stage_end,
+    ) < 0:
+        raise ValueError("evaluation planning episode counts must be non-negative")
+    if evaluation.heldout_preference_pairs <= 0 or evaluation.heldout_preference_horizon <= 0 or evaluation.planning_episode_horizon <= 0:
+        raise ValueError("evaluation pair, preference-horizon, and planning-horizon values must be positive")
     raw_seeds = _mapping(root.get("seeds"), "protocol.seeds")
     development = _tuple_ints(raw_seeds["development"], "seeds.development")
     final = _tuple_ints(raw_seeds["final"], "seeds.final")

@@ -103,7 +103,23 @@ def build_method(
         "device": device, "seed": seed,
     }
     if canonical == "moprl_online_ft":
-        kwargs.update(model_hidden_dims=tuple(model.get("hidden_dims", (128, 128))), model_learning_rate=float(model.get("learning_rate", 1e-3)), **method_config)
+        # MoP-RL predates the grouped preference config used by the other
+        # online adapters.  Expand the shared protocol fields to its explicit
+        # constructor names instead of passing an unsupported
+        # ``preference_config`` keyword.
+        kwargs.pop("preference_config")
+        kwargs.update(
+            model_hidden_dims=tuple(model.get("hidden_dims", (128, 128))),
+            model_learning_rate=float(model.get("learning_rate", 1e-3)),
+            preference_ensemble_size=preference["ensemble_size"],
+            preference_hidden_dims=tuple(preference["hidden_dims"]),
+            preference_learning_rate=preference["learning_rate"],
+            preference_batch_size=preference["reward_batch_size"],
+            min_preferences_before_planning=preference["min_preferences_before_planning"],
+            pair_pool_size=preference["pair_pool_size"],
+            teacher_skip_margin=preference["teacher_skip_margin"],
+            **method_config,
+        )
     else:
         kwargs[section_name + "_config"] = method_config
     return cls(**kwargs)

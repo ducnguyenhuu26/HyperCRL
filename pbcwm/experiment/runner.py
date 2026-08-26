@@ -77,11 +77,13 @@ class CanonicalLifetimeRunner:
                 try:
                     eval_context = None if eval_env is None else {"env": eval_env, "evaluation_seed": self.streams["evaluation_seed"]}
                     query_owner = getattr(query_handler, "__self__", None)
-                    isolated_evaluation(
+                    result = isolated_evaluation(
                         learner,
                         lambda current: evaluation_handler(checkpoint, current, eval_context),
                         components=(agent_planner, planning_reward, query_owner),
                     )
+                    if logger is not None and isinstance(result, dict):
+                        logger.write({"kind": "evaluation", **result})
                 finally:
                     close_eval = getattr(eval_env, "close", None)
                     if callable(close_eval):
@@ -91,6 +93,8 @@ class CanonicalLifetimeRunner:
             agent_dynamics = getattr(learner, "dynamics", learner)
             agent_planner = getattr(learner, "planner", planner)
             planning_reward = reward_fn if reward_fn is not None else getattr(learner, "learned_reward", None)
+            cached_plan = None
+            cached_plan_step = -1
             for checkpoint in checkpoints_by_step.get(0, []):
                 if evaluation_handler is not None:
                     evaluate_checkpoint(checkpoint)
@@ -98,14 +102,22 @@ class CanonicalLifetimeRunner:
                 stage = self.schedule.stage_at(global_step)
                 if global_step in self.schedule.boundary_steps:
                     switches.append(global_step)
+                    cached_plan = None
                     if stage_handler is not None:
                         stage_handler(stage)
                 warmup = global_step < env_config.warmup_steps
                 if warmup:
                     action = env.action_space.sample()
+                    cached_plan = None
                 elif callable(getattr(learner, "plan", None)):
-                    plan_result = learner.plan(obs, collect_candidates=False)
-                    action = plan_result.action
+                    plan_age = global_step - cached_plan_step
+                    sequence = None if cached_plan is None else getattr(cached_plan, "best_action_sequence", None)
+                    if cached_plan is None or plan_age >= self.config.planner_replan_interval or sequence is None or plan_age >= len(sequence):
+                        cached_plan = learner.plan(obs, collect_candidates=False)
+                        cached_plan_step = global_step
+                        action = cached_plan.action
+                    else:
+                        action = sequence[plan_age].detach().cpu().numpy().astype("float32")
                 else:
                     if agent_planner is None:
                         raise RuntimeError("canonical runner needs an agent.plan method or planner.act")
@@ -118,13 +130,13 @@ class CanonicalLifetimeRunner:
                     updater = getattr(learner, "update_dynamics", None)
                 if not callable(updater):
                     updater = getattr(learner, "update", None)
-                if callable(updater):
+                if callable(updater) and (global_step + 1) % self.config.world_model.update_interval_steps == 0:
                     updater(self.config.world_model.update_opportunities_per_env_step)
                 if global_step in query_by_step:
                     query = query_by_step[global_step]
                     if query_handler is None:
                         raise RuntimeError("protocol query requires query_handler")
-                    produced = int(query_handler(query, learner, planner, reward_fn))
+                    produced = int(query_handler(query, learner, planner, reward_fn, next_obs))
                     if produced != query.pair_count:
                         raise RuntimeError("query handler did not consume the protocol pair count")
                     ledger.consume_preferences(produced)
@@ -134,6 +146,7 @@ class CanonicalLifetimeRunner:
                 if terminated or truncated:
                     resets.append(global_step + 1)
                     obs, _ = env.reset()
+                    cached_plan = None
                 else:
                     obs = next_obs
             ledger.assert_complete()

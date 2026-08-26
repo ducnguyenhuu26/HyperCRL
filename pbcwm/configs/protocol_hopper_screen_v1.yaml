@@ -1,0 +1,53 @@
+protocol:
+  version: pbcwm-hopper-screen-v1
+  schedule:
+    template: [P0, A, B, C, B, A]
+    randomize_abc_per_seed: false
+    stage_jitter_fraction: 0.0
+    bootstrap_stage_jitter: false
+    lifetime_clock: global_env_step
+    change_mid_episode: true
+  stage_length:
+    Hopper-v5: 10000
+  warmup_steps:
+    Hopper-v5: 2000
+  preference:
+    total_budget: 120
+    bootstrap_queries: 30
+    bootstrap_rounds: 3
+    online_queries: 90
+    online_rounds: 9
+    queries_per_round: 10
+    query_jitter_fraction: 0.0
+    minimum_spacing_fraction: 0.5
+  reward_model:
+    ensemble_size: 3
+    batch_size: 16
+    updates_per_query_round: 25
+  world_model:
+    min_buffer_before_update: 128
+    update_opportunities_per_env_step: 1
+    default_neural_batch_size: 128
+    update_interval_steps: 4
+  planner:
+    type: cem
+    replan_interval: 2
+    iterations: 2
+    elite_fraction: 0.125
+    by_env:
+      Hopper-v5: {horizon: 10, population: 64}
+  evaluation:
+    stage_fractions: [0.0, 0.05, 0.1, 0.2, 0.4, 0.7, 1.0]
+    recurrence_interactions: [32, 64, 128]
+    planning_episodes_regular: 0
+    planning_episodes_stage_end: 3
+    reward_ablation_episodes_stage_end: 3
+    heldout_preference_pairs: 32
+    heldout_preference_horizon: 10
+    planning_episode_horizon: 250
+  seeds:
+    development: [200, 201, 202]
+    final: [200, 201, 202]
+  tuning:
+    max_configs_per_method_env: 1
+    development_seeds: [200, 201, 202]

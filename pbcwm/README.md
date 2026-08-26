@@ -97,7 +97,7 @@ CUDA is unavailable.
 From the repository root:
 
 ```bash
-python -m pip install -r pbcwm/requirements.txt
+bash scripts/setup_vast_global.sh
 python train.py --config pbcwm/configs/pendulum.yaml
 python train.py --config pbcwm/configs/pendulum_moprl_online_ft.yaml
 python train.py --config pbcwm/configs/pendulum_gpmm_return.yaml
@@ -151,3 +151,38 @@ labels; the planner receives learned reward only.
 
 Preference labels use `0 = trajectory A preferred` and `1 = trajectory B
 preferred`; Bradley–Terry training uses `score(B) - score(A)` as the BCE logit.
+
+## Hopper campaign
+
+The bounded Hopper screen is configured in
+`pbcwm/configs/hopper_campaign.yaml`. It compares the five baseline adapters
+(`MoPRL-Online-FT`, `GPMM`, `HyperCRL-Adapt`, `VBLRL-Adapt`, and `Curious
+Replay-Adapt`) with `RADIUS-PbCWM` on one fixed `P0 -> A -> B -> C -> B -> A`
+schedule, seeds `200/201/202`, and 10,000 interactions per stage. It uses a
+common CEM budget of population 64, horizon 10, two iterations, and replan
+interval two; all methods update their world model once per four interactions.
+
+Each job writes isolated `status.json`, `protocol.jsonl`, and `summary.json`
+covering three evaluator-only questions: held-out world-model NRMSE acquisition
+and reacquisition curves; held-out preference-label accuracy against the
+observable Hopper posture/control proxy plus a matched-episode, same-model
+zero-reward CEM ablation; and true Hopper return from CEM at each stage end. The reward proxy
+and true environment returns never enter learner transitions.
+
+From the repository root, inspect the 18-job plan:
+
+```powershell
+python scripts/run_hopper_campaign.py --dry-run
+```
+
+Launch with three bounded processes on a CUDA host:
+
+```powershell
+python scripts/run_hopper_campaign.py --max-parallel 4
+```
+
+After all jobs complete, the launcher writes `outputs/hopper_screen_v1/aggregate.json`
+with per-method mean/std over the three seeds.
+
+The launcher fails closed when CUDA is unavailable. Use `--device cpu` only for
+an explicitly non-paper plumbing run; it does not change the campaign protocol.
