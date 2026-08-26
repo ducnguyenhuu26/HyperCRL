@@ -42,3 +42,15 @@ lightning_logs/
 .env
 .env.*
 !.env.example
+
+# LaTeX build products (keep paper sources and bibliography under version control)
+paper/**/*.aux
+paper/**/*.bbl
+paper/**/*.blg
+paper/**/*.fdb_latexmk
+paper/**/*.fls
+paper/**/*.log
+paper/**/*.out
+paper/**/*.synctex.gz
+paper/**/*.toc
+paper/**/*.pdf
